@@ -1,0 +1,24 @@
+{% extends "./base_dataset.html" %}
+
+{% block dataset_content %}
+  <h2>Dataset Project</h1>
+
+  <form method="POST" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="hidden" name="id" value="{{project.id}}">
+    <div class="mb-3">
+      <label for="project-name" class="form-label">Name</label>
+      <input class="form-control" id="project-name" name="name" value="{{project.name}}">
+    </div>
+    <div class="mb-3">
+      <label for="project-questions" class="form-label">Questions (JSON)</label>
+      <textarea class="form-control" id="project-questions" name="questions">{{questions}}</textarea>
+    </div>
+    <div class="mb-3">
+      <label for="project-turk-settings" class="form-label">Mechanical Turk settings (JSON)</label>
+      <textarea class="form-control" id="project-turk-settings" name="turk_settings">{{turk_settings}}</textarea>
+    </div>
+    <button type="submit" class="btn btn-primary">Submit</button>
+  </form>
+{% endblock %}
+{# vim: set ft=htmldjango: #}

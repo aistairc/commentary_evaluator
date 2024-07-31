@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h1>New Dataset</h1>
+
+  <form method="POST">
+    {% csrf_token %}
+    <div class="mb-3">
+      <label for="dataset-name" class="form-label">Name</label>
+      <input class="form-control" id="dataset-name" name="name">
+    </div>
+    <button type="submit" class="btn btn-primary">Submit</button>
+  </form>
+{% endblock %}
+{# vim: set ft=htmldjango: #}

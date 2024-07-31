@@ -1,0 +1,21 @@
+{# params: page, new_url=None #}
+<nav>
+  <ul class="pagination">
+    {% if page.has_previous %}
+      <li class="page-item"><a href="?page=1" aria-label="First" class="page-link"><i class="fas fa-backward-fast"></i></a></li>
+      <li class="page-item"><a href="?page={{ page.previous_page_number }}" aria-label="Previous" class="page-link"><i class="fas fa-caret-left"></i></a></li>
+    {% endif %}
+
+    <li class="page-item"><a class="page-link pe-none">Page {{ page.number }} of {{ page.paginator.num_pages }}</a></li>
+
+    
+    {% if page.has_next %}
+      <li class="page-item"><a href="?page={{ page.next_page_number }}" aria-label="Next" class="page-link"><i class="fas fa-caret-right"></i></a></li>
+      <li class="page-item"><a href="?page={{ page.paginator.num_pages }}" aria-label="Last" class="page-link"><i class="fas fa-forward-fast"></i></a></li>
+    {% endif %}
+    
+    {% if new_url %}
+      <li class="page-item"><a href="{{ new_url }}" aria-label="New" class="page-link link-success"><i class="fas fa-square-plus"></i></a></li>
+    {% endif %}
+  </ul>
+</nav>

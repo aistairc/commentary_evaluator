@@ -1,0 +1,34 @@
+{% extends "./base_dataset.html" %}
+
+{% block dataset_content %}
+  <h2>Dataset Projects</h2>
+
+  {% include '_paginator.html' %}
+
+  <div class="responsive-table w-100">
+    <table class="table">
+      <thead>
+        <tr>
+          <th scope="col">ID</th>
+          <th scope="col">Name</th>
+          <th scope="col"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for project in page %}
+          <tr>
+            <th scope="row">{{ project.id }}</th>
+            <td>
+              <a href="{% url 'dataset_project' dataset.id project.id %}" class="btn-link">
+                {{ project.name }}
+              </a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% include '_paginator.html' %}
+{% endblock %}
+{# vim: set ft=htmldjango: #}

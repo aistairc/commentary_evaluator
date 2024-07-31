@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 """
 
 from pathlib import Path
+import importlib
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -27,12 +28,9 @@ DEBUG = True
 
 ALLOWED_HOSTS = []
 
-
 # Application definition
 
 INSTALLED_APPS = [
-    'video_eval_app.apps.VideoEvalAppConfig',
-
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -40,7 +38,10 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
 
-    'django_cleanup.apps.CleanupConfig',
+    'guardian',
+    'django_q',
+
+    'video_eval_app.apps.VideoEvalAppConfig',
 ]
 
 MIDDLEWARE = [
@@ -52,6 +53,11 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+AUTHENTICATION_BACKENDS = (
+    'django.contrib.auth.backends.ModelBackend', # default
+    'guardian.backends.ObjectPermissionBackend',
+)
 
 ROOT_URLCONF = 'video_evaluation.urls'
 
@@ -128,4 +134,44 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-LOGIN_REDIRECT_URL = "/"
+LOGIN_REDIRECT_URL = "index"
+LOGOUT_REDIRECT_URL = "index"
+
+MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_URL = '/media/'
+
+Q_CLUSTER = {
+    'orm': 'default',
+    'timeout': 600, # 10 min
+    'retry': 601, # 10 min +
+    'workers': 1,
+}
+
+_MB = 1024 * 1024
+FILE_UPLOAD_MAX_MEMORY_SIZE = 1024 * _MB
+
+INTERNAL_IPS = [
+    '127.0.0.1',
+]
+
+
+if importlib.util.find_spec("django_extensions"):
+    INSTALLED_APPS.append('django_extensions')
+
+if importlib.util.find_spec('django_browser_reload'):
+    INSTALLED_APPS.append('django_browser_reload')
+    MIDDLEWARE.append('django_browser_reload.middleware.BrowserReloadMiddleware')
+
+if importlib.util.find_spec('debug_toolbar'):
+    INSTALLED_APPS.append('debug_toolbar')
+    MIDDLEWARE.append('debug_toolbar.middleware.DebugToolbarMiddleware')
+
+
+
+try:
+    from .local_settings import *
+except ImportError:
+    pass
+
+
+

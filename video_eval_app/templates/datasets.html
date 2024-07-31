@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h1>Datasets</h1>
+
+  {% include '_paginator.html' %}
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th scope="col">ID</th>
+        <th scope="col">Name</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for dataset in page %}
+        <tr>
+          <th scope="row">{{ dataset.id }}</th>
+          <td><a href="{% url 'dataset_videos' dataset.id %}">{{ dataset.name }}</a></td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% include '_paginator.html' %}
+{% endblock %}
+{# vim: set ft=htmldjango: #}

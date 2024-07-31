@@ -1,0 +1,52 @@
+{% extends "./base_dataset.html" %}
+
+{% block dataset_content %}
+  <form method="POST">
+    {% csrf_token %}
+    <div class="mb-3">
+      <label for="dataset-name" class="form-label">Name</label>
+      <input class="form-control" id="dataset-name" name="name" value="{{dataset.name}}">
+    </div>
+    <div class="mb-3">
+      <label for="dataset-created-by" class="form-label">Created by</label>
+      <input class="form-control" id="dataset-created-by" value="{{dataset.created_by.username}}">
+    </div>
+    <div class="mb-3">
+      <label for="dataset-token" class="form-label">Token</label>
+      <div class="row">
+        <div class="col-sm-10">
+          <input class="form-control" id="dataset-token" name="token" aria-describedby="tokenHelp" value="{{dataset.token}}" data-old-value="{{dataset.token}}" readonly>
+        </div>
+        <div class="col-sm-2">
+          <input type="button" class="btn btn-primary form-control" id="token-renew-button" value="Renew">
+          <input type="hidden" id="token-renew-value" name="renew" value="0">
+          <script>
+            const tokenRenewButton = document.querySelector('#token-renew-button')
+            const tokenRenewValue = document.querySelector('#token-renew-value')
+            const tokenEl = document.querySelector('#dataset-token')
+            tokenRenewButton.addEventListener('click', evt => {
+              const renew = 1 - tokenRenewValue.value
+              tokenRenewValue.value = renew
+              if (renew) {
+                tokenRenewButton.value = 'Cancel'
+                tokenEl.disabled = true
+                tokenEl.value = '<renew>'
+              } else {
+                tokenRenewButton.value = 'Renew'
+                tokenEl.disabled = false
+                tokenEl.value = tokenEl.getAttribute('data-old-value')
+              }
+            })
+          </script>
+        </div>
+      </div>
+      <div id="tokenHelp" class="form-text">You can use the token to upload videos from command line (the only mandatory field is <code class="text-primary">file</code>):
+        <pre class="text-wrap user-select-all text-secondary border border-primary rounded p-1"><code>
+          curl -F "file=@<i class="text-primary">video.mp4</i>" -F "audio=@<code class="text-primary">audio.mp4</code> -F "subtitles=@<i class="text-primary">subtitles.srt</i>" -F "cuts=@<i class="text-primary">cuts.json</i>" -F "name=<i class="text-primary">video name</i>" {{upload_video_url}}
+        </code></pre>
+      </div>
+    </div>
+    <button type="submit" class="btn btn-primary">Submit</button>
+  </form>
+{% endblock %}
+{# vim: set ft=htmldjango: #}

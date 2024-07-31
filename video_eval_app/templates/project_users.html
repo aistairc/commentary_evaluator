@@ -1,0 +1,77 @@
+{% extends "./base_dataset.html" %}
+
+{% block dataset_content %}
+  <h2>Project Users: {{ project.name }}</h2>
+
+  {% include '_paginator.html' %}
+
+  <div class="responsive-table w-100">
+    <table class="table">
+      <thead>
+        <tr>
+          <th scope="col">Username</th>
+          <th scope="col">Evaluator</th>
+          <th scope="col">Manager</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in page %}
+          {% with user=row.0 evaluate=row.1 manage=row.2 %}     
+            <tr>
+              <th scope="row">{{ user.username }}</th>
+              <td>
+                <form method="POST">
+                  {% csrf_token %}
+                  <input type="hidden" name="user_id" value="{{ user.id }}">
+                  <button name="evaluate" value="{{ evaluate }}" class="btn btn-sm
+                    {% if evaluate %}
+                      btn-success
+                    {% else %}
+                      btn-light
+                    {% endif %}
+                  ">
+                    <i class="fa-solid
+                      {% if evaluate %}
+                        fa-check
+                      {% else %}
+                        fa-xmark
+                      {% endif %}
+                    "></i>
+                  </button>
+                </form>
+              </td>
+              <td>
+                <form method="POST">
+                  {% csrf_token %}
+                  <input type="hidden" name="user_id" value="{{ user.id }}">
+                  <button name="manage" value="{{ manage }}" class="btn btn-sm
+                    {% if manage %}
+                      btn-success
+                    {% else %}
+                      btn-light
+                    {% endif %}
+                  "
+                    {% if user.id == request.user.id %}
+                      disabled
+                    {% endif %}
+                  >
+                    <i class="fa-solid
+                      {% if manage %}
+                        fa-check
+                      {% else %}
+                        fa-xmark
+                      {% endif %}
+                    "></i>
+                  </button>
+                </form>
+              </td>
+            </tr>
+          {% endwith %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% include '_paginator.html' %}
+{% endblock %}
+{# vim: set ft=htmldjango: #}

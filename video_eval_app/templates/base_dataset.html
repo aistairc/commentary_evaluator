@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+
+{% block content %}
+  {% if dataset %}
+    <h1>Dataset: {{dataset.name}}</h1>
+  {% endif %}
+  {% if project %}
+    <h2>Project: {{project.name}}</h2>
+  {% endif %}
+  {% if dataset_video %}
+    <h3>Video: {{dataset_video.name}}</h3>
+  {% endif %}
+
+  {% block dataset_content %}{% endblock %}
+{% endblock %}
+{# vim: set ft=htmldjango: #}

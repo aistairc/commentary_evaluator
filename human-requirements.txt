@@ -1,0 +1,14 @@
+django
+django-guardian
+django-q2
+ffmpeg-python
+webvtt-py
+uvicorn[standard]
+setuptools
+honcho
+jsonfield
+
+# OPTIONAL
+django-debug-toolbar
+django-extensions
+django-browser-reload

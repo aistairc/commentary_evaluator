@@ -1,0 +1,75 @@
+{% extends "./base_dataset.html" %}
+
+{% block dataset_content %}
+  <h2>Dataset Video</h2>
+
+  <form method="POST" enctype="multipart/form-data">
+    {% csrf_token %}
+    <input type="hidden" name="id" value="{{dataset_video.id}}">
+    <div class="mb-3">
+      <label for="video-name" class="form-label">Name</label>
+      <input class="form-control" id="video-name" name="name" value="{{dataset_video.name}}">
+    </div>
+    <div class="mb-3">
+      <label for="video-file" class="form-label">Video file (<code>.mp4</code>)
+      </label>
+      <input type="file" class="form-control" id="video-file" name="file" accept=".mp4">
+    </div>
+    <div class="mb-3">
+      <label for="video-subtitles" class="form-label">Subtitle file (<code>.vtt</code>, <code>.srt</code>, <code>.sbv</code>, <code>.csv</code> or <code>.tsv</code>)</label>
+      <input type="file" class="form-control" id="video-file" name="subtitles" accept=".srt,.vtt,.sbv,.csv,.tsv">
+    </div>
+    <div class="mb-3">
+      <label for="video-audio" class="form-label">Audio file (<code>.mp3</code>, <code>.aac</code> or <code>.wav</code>)</label>
+      <input type="file" class="form-control" id="video-file" name="subtitles" accept=".mp3,.aac,.wav">
+    </div>
+    <div class="mb-3">
+      <label for="video-cuts" class="form-label">Cut file (<code>.json</code>)</label>
+      <input type="file" class="form-control" id="video-cuts" name="cuts" accept=".json">
+    </div>
+    <button type="submit" class="btn btn-primary">Submit</button>
+  </form>
+
+  {% if dataset_video.id %}
+    <video controls autoplay class="mt-3">
+      <source type="video/mp4" src="{{ dataset_video.video.file.url }}">
+      {% if dataset_video.subtitles %}
+        <track src="{{ dataset_video.subtitles.url }}" kind="captions" default>
+      {% endif %}
+    </video>
+    {% if dataset_video.audio %}
+      <br>
+      <audio src="{{ dataset_video.audio.url }}" controls></audio>
+    {% endif %}
+
+    {% include '_paginator.html' %}
+
+    <div class="responsive-table w-100 mt-3">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Segments</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for segment in page %}
+            <tr>
+              <td>
+                <a href="{% url 'segment' segment.md5sum %}">
+                  {{ segment.start_ts }}
+                  &ndash;
+                  {{ segment.end_ts|default_if_none:"End" }}
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% include '_paginator.html' %}
+
+  {% endif %}
+
+{% endblock %}
+{# vim: set ft=htmldjango: #}
