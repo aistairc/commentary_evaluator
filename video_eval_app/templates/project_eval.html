@@ -1,6 +1,6 @@
-{% extends "base_dataset.html" %}
+{% extends "base.html" %}
 
-{% block dataset_content %}
+{% block content %}
   {% if task %}
     <video controls autoplay>
       <source type="video/mp4" src="{{ task.segment.file.url }}">

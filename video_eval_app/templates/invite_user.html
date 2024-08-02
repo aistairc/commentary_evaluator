@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h2>Invite user to
+    {% if project %}
+      project
+    {% else %}
+      dataset
+    {% endif %}
+  </h2>
+  
+  <form method="POST">
+    {% csrf_token %}
+    <div class="mb-3">
+      <label for="email" class="form-label">Email</label>
+      <input id="email" name="email" type="email" class="form-control">
+    </div>
+    {% if project %}
+      <button type="submit" class="btn btn-primary" name="role" value="manage_project">Invite manager</button>
+      <button type="submit" class="btn btn-primary" name="role" value="evaluate_project">Invite evaluator</button>
+    {% else %}
+      <button type="submit" class="btn btn-primary" name="role" value="manage_dataset">Invite manager</button>
+    {% endif %}
+  </form>
+{% endblock %}
+{# vim: set ft=htmldjango: #}

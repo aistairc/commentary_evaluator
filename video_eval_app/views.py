@@ -1,9 +1,10 @@
+from django.contrib.admin.options import messages
 from icecream import ic # DEBUG: remove later
 
 import json
 
 from django.shortcuts import HttpResponseRedirect, render, redirect
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, Http404
 from django.core.paginator import Paginator
 from django.contrib.auth.decorators import login_required
 from django.urls import reverse
@@ -12,9 +13,14 @@ from django.views.decorators.http import require_POST, require_safe
 from django.db.utils import IntegrityError
 from django.db.models import Exists, OuterRef
 from django.utils.safestring import SafeString
+from django.contrib.auth import login
 from guardian.shortcuts import assign_perm, remove_perm, get_objects_for_user, get_users_with_perms
+from invitations.utils import get_invitation_model
+
 
 from .models import *
+
+Invitation = get_invitation_model()
 
 
 ITEMS_PER_PAGE = 10
@@ -157,6 +163,7 @@ def dataset_video(request, dataset_id, dataset_video_id=None):
         else:
             dataset_video = DatasetVideo(dataset=dataset)
             page = None
+        ic(dataset_video)
         return render(request, 'dataset_video.html', {
             'editable': manage_dataset_perm,
             'dataset': dataset,
@@ -281,9 +288,11 @@ def dataset_managers(request, dataset_id):
                 for user in page.object_list
             )
         ]
+        new_url = request.user.has_perm('add_user') and reverse('dataset_invite', args=[dataset.id])
         return render(request, 'dataset_managers.html', {
             'dataset': dataset,
             'page': page,
+            'new_url': new_url,
         })
     elif request.method == 'POST':
         user_id = request.POST["user_id"]
@@ -314,10 +323,12 @@ def project_users(request, project_id):
                 for user in page.object_list
             )
         ]
+        new_url = request.user.has_perm('add_user') and reverse('project_invite', args=[project.id])
         return render(request, 'project_users.html', {
             'dataset': project.dataset,
             'project': project,
             'page': page,
+            'new_url': new_url,
         })
     elif request.method == 'POST':
         user_id = request.POST["user_id"]
@@ -335,6 +346,36 @@ def project_users(request, project_id):
             else:
                 remove_perm('manage_project', user, project)
         return redirect('project_users', project_id=project.id)
+
+@login_required
+def invite_user(request, dataset_id=None, project_id=None):
+    if project_id:
+        project = Project.objects.get(pk=project_id)
+        dataset = Dataset.objects.get(pk=project.dataset.id)
+        if not request.user.has_perm('manage_project', project):
+            return HttpResponse('Forbidden', status=403)
+    elif dataset_id:
+        dataset = Dataset.objects.get(pk=dataset_id)
+        project = None
+        if not request.user.has_perm('manage_dataset', dataset):
+            return HttpResponse('Forbidden', status=403)
+    if request.method in {'GET', 'HEAD'}:
+        return render(request, 'invite_user.html', {
+            'dataset': dataset,
+            'project': project,
+        })
+    elif request.method == 'POST':
+        role = request.POST['role']
+        email = request.POST['email']
+        invitation = Invitation.objects.filter(email__iexact=email).last()
+        if invitation:
+            pass # TODO: refuse to send duplicate invitation
+        invitation = Invitation.create(email=email, role=role, dataset=dataset, project=project)
+        invitation.send_invitation(request)
+        if project:
+            return redirect('project_users', project_id=project.id)
+        else:
+            return redirect('dataset_managers', dataset_id=dataset.id)
 
 @login_required
 def segment(request, segment_id):
@@ -452,6 +493,47 @@ def project_results(request, project_id):
         json.dumps(results, ensure_ascii=False),
         content_type="application/json"
     )
+
+def accept_invite(request, key):
+    try:
+        invitation = Invitation.objects.get(key=key.lower())
+    except Invitation.DoesNotExist:
+        messages.error(request, "This invitation does not exist.")
+        return redirect('index')
+    if invitation.accepted:
+        messages.error(request, "This invitation has been already accepted.")
+        return redirect('index')
+    if invitation.key_expired():
+        messages.error(request, "This invitation has expired.")
+        return redirect('index')
+
+    if request.method in {"GET", "HEAD"}:
+        return render(request, 'invite_signup.html', {
+            'invitation': invitation,
+            'username': request.POST.get('username', ''),
+        })
+    elif request.method == 'POST':
+        password = request.POST['password1']
+        if password != request.POST['password2']:
+            messages.error(request, "The passwords do not match.")
+            return HttpResponseRedirect(request.path_info)
+
+        user = User.objects.create_user(
+            username=request.POST['username'],
+            email=invitation.email,
+            password=password,
+        )
+        scope = invitation.project or invitation.dataset
+        assign_perm(invitation.role, user, scope)
+
+        login(request, user, backend='django.contrib.auth.backends.ModelBackend')
+
+        invitation.accepted = True
+        invitation.save()
+
+        return redirect('index')
+
+
 
 # async def turk_question(request):
 #     assignment_id = request.GET.get('assignmentId')

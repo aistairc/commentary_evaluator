@@ -21,6 +21,9 @@ urlpatterns = [
     path("projects/<int:project_id>/eval", views.project_eval, name="project_eval"),
     path("segments/<str:segment_id>", views.segment, name="segment"),
     path("tasks/<int:task_id>/submit", views.task_eval_submit, name="task_eval_submit"),
+    path("datasets/<str:dataset_id>/invite", views.invite_user, name="dataset_invite"),
+    path("projects/<str:project_id>/invite", views.invite_user, name="project_invite"),
+    path("invitations/accept-invite/<str:key>", views.accept_invite, name="accept-invite"),
 
     path("upload_video/<uuid:token>", views.upload_video_api, name="upload_video_api"),
     # path("turk_question", views.turk_question),
