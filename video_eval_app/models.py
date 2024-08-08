@@ -1,5 +1,3 @@
-from icecream import ic # DEBUG: remove later
-
 import uuid
 from functools import partial
 
@@ -9,6 +7,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.contrib.auth.models import User, Group
 from django_q.tasks import async_task
+from invitations.models import Invitation as OriginalInvitation
 import jsonfield
 
 
@@ -157,3 +156,10 @@ class Assignment(models.Model):
 
     def __str__(self):
         return f'pk={self.pk}, task={self.task_id}, worker={self.worker_id}, turk_assignment_id={self.turk_assignment_id}, status={self.status}'
+
+
+
+class Invitation(OriginalInvitation):
+    dataset = models.ForeignKey(Dataset, on_delete=models.SET_NULL, related_name='invitations', null=True)
+    project = models.ForeignKey(Project, on_delete=models.SET_NULL, related_name='invitations', null=True)
+    role = models.CharField(max_length=255)

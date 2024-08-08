@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h1>New Dataset</h1>
+
+  <form method="POST">
+    {% csrf_token %}
+    <input type="hidden" name="key" value="{{invitation.key}}">
+    <div class="mb-3">
+      <label for="user-username" class="form-label">Username</label>
+      <input class="form-control" id="user-username" name="username" value="{{username}}">
+    </div>
+    <div class="mb-3">
+      <label for="user-password1" class="form-label">Password:</label>
+      <input type="password" class="form-control" id="user-password1" name="password1">
+    </div>
+    <div class="mb-3">
+      <label for="user-password2" class="form-label">Password (again):</label>
+      <input type="password" class="form-control" id="user-password2" name="password2">
+    </div>
+    <button type="submit" class="btn btn-primary">Sign up</button>
+  </form>
+  {# prevent default messages #}
+  {% block default_messages %}{% endblock %}
+{% endblock %}
+{# vim: set ft=htmldjango: #}

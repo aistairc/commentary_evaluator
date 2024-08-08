@@ -1,5 +1,3 @@
-from icecream import ic # DEBUG: remove later
-
 from tempfile import NamedTemporaryFile
 from pathlib import Path
 from io import BytesIO, StringIO
@@ -158,3 +156,7 @@ def cut_dataset_video(dataset_video):
 
     # mark as cut without triggering post_save
     DatasetVideo.objects.filter(pk=dataset_video.id).update(is_cut=True)
+
+
+def vacuum():
+    pass # TODO: implement
