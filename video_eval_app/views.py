@@ -1,5 +1,4 @@
 from django.contrib.admin.options import messages
-from icecream import ic # DEBUG: remove later
 
 import json
 
@@ -163,7 +162,6 @@ def dataset_video(request, dataset_id, dataset_video_id=None):
         else:
             dataset_video = DatasetVideo(dataset=dataset)
             page = None
-        ic(dataset_video)
         return render(request, 'dataset_video.html', {
             'editable': manage_dataset_perm,
             'dataset': dataset,
