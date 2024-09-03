@@ -1,3 +1,5 @@
+from icecream import ic
+
 from django.contrib.admin.options import messages
 
 import json
@@ -16,8 +18,12 @@ from django.contrib.auth import login
 from guardian.shortcuts import assign_perm, remove_perm, get_objects_for_user, get_users_with_perms
 from invitations.utils import get_invitation_model
 
+from video_evaluation.settings import MTURK_SANDBOX
 
 from .models import *
+from .mturk import MTurk
+from .utils import convert_answers
+
 
 Invitation = get_invitation_model()
 
@@ -203,37 +209,82 @@ def dataset_project(request, dataset_id, project_id=None):
             return HttpResponse('Forbidden', status=403)
         project = Project()
     if request.method in {"GET", "HEAD"}:
+        num_approved_assignments = Assignment.objects.filter(
+            task__project=project, is_approved=True,
+        ).count()
         return render(request, 'dataset_project.html', {
             'dataset': dataset,
             'project': project,
+            'project_messages': project.messages,
             'questions': SafeString(json.dumps(project.questions, ensure_ascii=False)),
             'turk_settings': SafeString(json.dumps(project.turk_settings, ensure_ascii=False)),
+            'num_uncut_videos': dataset.dataset_videos.filter(is_cut=False).count(), # TODO: disable "Start" button if >0, show an info message
+            'preview_url': MTurk.get_environment()['preview'] + '?groupId=' + project.turk_hit_group_id if project.turk_hit_group_id else None,
+            'disabled': 'disabled' if project.is_busy else '',
+            'num_approved_assignments': num_approved_assignments,
         })
     elif request.method == 'POST':
-        defaults = {
-            "name": request.POST["name"],
-            "questions": json.loads(request.POST["questions"]),
-            "turk_settings": json.loads(request.POST["turk_settings"]),
-        }
-        create_defaults={
-            **defaults,
-            "created_by": request.user,
-            "dataset": dataset,
-        }
-        project, created = Project.objects.update_or_create(
-            id=req_pk(request),
-            defaults=defaults,
-            create_defaults=create_defaults,
-        )
-        if created:
-            assign_perm('manage_project', request.user, project)
-            segments = Segment.objects.filter(dataset_video__dataset=project.dataset)
-            tasks = [
-                Task(project=project, segment=segment)
-                for segment in segments
-            ]
-            Task.objects.bulk_create(tasks)
-        return redirect('dataset_projects', dataset_id=dataset.id)
+        if project.is_busy:
+            messages.warning('The project became busy, the operation was not performed. Please try again later.')
+            pass # do nothing, redirect back
+        elif request.POST.get('dismiss_messages'):
+            project.messages = []
+            project.save()
+        elif request.POST.get('collect_mturk'):
+            turk_credentials = request.POST.get('turk_credentials')
+            async_task(
+                'video_eval_app.tasks.get_assignments_from_mturk',
+                project, turk_credentials,
+            )
+        else:
+            num_uncut_videos = dataset.dataset_videos.filter(is_cut=False).count()
+            if num_uncut_videos:
+                message.warning(f'{num_uncut_videos} video(s) still being processed')
+                return redirect('dataset_project', dataset_id=dataset.id, project_id=project.id)
+            turk_settings = request.POST["turk_settings"]
+            turk_settings = json.loads(request.POST["turk_settings"])
+            defaults = {
+                "name": request.POST["name"],
+                "questions": json.loads(request.POST["questions"]),
+                "turk_settings": turk_settings,
+            }
+            will_run_async_task = bool(turk_settings)
+            create_defaults={
+                **defaults,
+                "created_by": request.user,
+                "dataset": dataset,
+                "is_busy": will_run_async_task,
+            }
+            project, created = Project.objects.update_or_create(
+                id=req_pk(request),
+                defaults=defaults,
+                create_defaults=create_defaults,
+            )
+            if created:
+                assign_perm('manage_project', request.user, project)
+            if request.POST.get('start'):
+                if turk_settings:
+                    # get MTurk client and check if it works
+                    turk_credentials = request.POST.get('turk_credentials')
+                    mturk = MTurk()
+                    mturk.connect(turk_credentials)
+                    mturk.get_account_balance()
+
+                project.is_started = True
+                project.save()
+                segments = Segment.objects.filter(dataset_video__dataset=project.dataset)
+                tasks = [
+                    Task(project=project, segment=segment)
+                    for segment in segments
+                ]
+                Task.objects.bulk_create(tasks)
+
+                if turk_settings:
+                    async_task(
+                        'video_eval_app.tasks.post_project_to_mturk',
+                        project, turk_credentials,
+                    )
+        return redirect('dataset_project', dataset_id=dataset.id, project_id=project.id)
 
 @login_required
 @require_safe
@@ -302,6 +353,65 @@ def dataset_managers(request, dataset_id):
             else:
                 remove_perm('manage_dataset', user, dataset)
         return redirect('dataset_managers', dataset_id=dataset.id)
+
+@login_required
+def project_approvals(request, project_id):
+    project = Project.objects.get(pk=project_id)
+    assignments = Assignment.objects.filter(task__project=project)
+    paginator = Paginator(assignments, ITEMS_PER_PAGE)
+    page_number = request.GET.get("page")
+    page = paginator.get_page(page_number)
+    return render(request, 'project_approvals.html', {
+        'dataset': project.dataset,
+        'project': project,
+        'page': page,
+    })
+
+@login_required
+def assignment(request, assignment_id):
+    assignment = Assignment.objects.filter(pk=assignment_id).prefetch_related('task__project__dataset').first()
+    if request.method == 'POST':
+        turk_credentials = request.POST.get('turk_credentials')
+        feedback = request.POST.get('feedback')
+        feedback_opt = {}
+        if feedback:
+            feedback_opt['RequesterFeedback'] = feedback
+        if 'approve' in request.POST:
+            if assignment.turk_assignment_id:
+                mturk = MTurk()
+                mturk.connect(turk_credentials)
+                response = mturk.client.approve_assignment(
+                    AssignmentId=assignment.turk_assignment_id,
+                    **feedback_opt,
+                    OverrideRejection=True,
+                )
+            assignment.is_approved = True
+            assignment.save()
+        elif 'reject' in request.POST:
+            if assignment.turk_assignment_id:
+                if not feedback:
+                    messages.error(request, 'MTurk rejection requires feedback')
+                    return HttpResponseRedirect(request.path_info)
+                if assignment.is_approved:
+                    messages.error(request, 'Cannot reject an already approved MTurk assignment')
+                    return HttpResponseRedirect(request.path_info)
+                turk_credentials = request.POST.get('turk_credentials')
+                mturk = MTurk()
+                mturk.connect(turk_credentials)
+                response = mturk.client.reject_assignment(
+                    AssignmentId=assignment.turk_assignment_id,
+                    **feedback_opt,
+                )
+            assignment.is_approved = False
+            assignment.save()
+        return redirect('project_approvals', project_id=assignment.task.project.id)
+    else:
+        return render(request, 'assignment.html', {
+            'dataset': assignment.task.project.dataset,
+            'project': assignment.task.project,
+            'task': assignment.task,
+            'assignment': assignment,
+        })
 
 @login_required
 def project_users(request, project_id):
@@ -398,7 +508,7 @@ def project_eval(request, project_id):
     evaluate_project_perm = request.user.has_perm('evaluate_project', project)
     if not evaluate_project_perm:
         return HttpResponse('Forbidden', status=403)
-    worker, created = Worker.objects.get_or_create(user=request.user)
+    worker, _created = Worker.objects.get_or_create(user=request.user)
     task = Task.objects.filter(
         ~Exists(Assignment.objects.filter(
             task_id=OuterRef('pk'),
@@ -413,46 +523,13 @@ def project_eval(request, project_id):
         'dataset_video': task and task.segment.dataset_video,
     })
 
-def detect_question_type(question):
-    if 'options' not in question:
-        return str
-    types = list(set(type(option['value']) for option in question['options']))
-    if len(types) != 1:
-        return str
-    return types[0]
-
-def get_question_types(project):
-    return {
-        question["id"]: detect_question_type(question)
-        for question in project.questions
-    }
-
 @require_POST
 def task_eval_submit(request, task_id):
     task = Task.objects.get(pk=task_id)
-    result = {}
-    question_types = get_question_types(task.project)
-    for question in task.project.questions:
-        question_id = question['id']
-        question_type = question_types[question_id]
-        def converter(value):
-            if question_type != str and not value:
-                return None
-            else:
-                return question_type(value)
-        if question['type'] == 'checkbox':
-            answer = [
-                converter(value)
-                for value in request.POST.getlist(f'q-{question_id}')
-            ]
-        else:
-            answer = converter(request.POST.get(f'q-{question_id}'))
-        result[question_id] = answer
+    result = convert_answers(task.project.questions, request=request)
     Assignment.objects.create(
         task=task,
         worker=request.user.worker,
-        status=Assignment.Status.LOCAL,
-        segment_created_at=task.segment.created_at,
         result=result,
     )
     return redirect('project_eval', project_id=task.project.id)
@@ -469,8 +546,7 @@ def project_results(request, project_id):
             .prefetch_related('segment__dataset_video')
     )
     assignments = Assignment.objects.filter(
-        task__project_id=project_id,
-        status__in=[Assignment.Status.LOCAL, Assignment.Status.ACCEPTED]
+        task__project_id=project_id, is_approved=True,
     )
     results = {
         "project": project.name,

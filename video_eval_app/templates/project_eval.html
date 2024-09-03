@@ -2,34 +2,9 @@
 
 {% block content %}
   {% if task %}
-    <video controls autoplay>
-      <source type="video/mp4" src="{{ task.segment.file.url }}">
-      {% if task.segment.subtitles %}
-        <track src="{{ task.segment.subtitles.url }}" kind="captions" default>
-      {% endif %}
-    </video>
-
     <form method="POST" action="{% url 'task_eval_submit' task.id %}">
       {% csrf_token %}
-      {% for question in task.project.questions %}
-        <fieldset class="form-group mb-3">
-          {{ question.instruction | safe }}
-          {% if question.type == 'radio' or question.type == 'checkbox' %}
-            {% for option in question.options %}
-              <div class="form-check">
-                <input class="form-check-input" type="{{ question.type }}" name="q-{{ question.id }}" value="{{ option.value | safe }}" id="q-{{ question.id }}-{{ option.value }}">
-                <label class="form-check-label" for="q-{{ question.id }}-{{ option.value }}">
-                  {{ option.text | safe }}
-                </label>
-              </div>
-            {% endfor %}
-          {% elif question.type == 'text' %}
-            <input class="form-control" type="text" name="q-{{ question.id }}" id="q-{{ question.id }}">
-          {% endif %}
-        </fieldset>
-      {% endfor %}
-      {# TODO: build the form #}
-      <button type="submit" class="btn btn-primary">Submit</button>
+      {% include '_task_questions.html' %}
     </form>
   {% else %}
     No more tasks for you in this project!

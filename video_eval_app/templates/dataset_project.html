@@ -3,22 +3,52 @@
 {% block content %}
   <h2>Dataset Project</h1>
 
+
   <form method="POST" enctype="multipart/form-data">
     {% csrf_token %}
+
+    {% if project_messages %}
+      <div class="small">
+        {% for message in project_messages %}
+          <div class="alert alert-{{message.0}} p-1 m-1" role="alert">
+            {{message.1}}
+          </div>
+        {% endfor %}
+        <button type="submit" name="dismiss_messages" value="1" class="btn btn-primary btn-sm mb-3">Dismiss</button>
+      </div>
+    {% endif %}
+
     <input type="hidden" name="id" value="{{project.id}}">
     <div class="mb-3">
       <label for="project-name" class="form-label">Name</label>
-      <input class="form-control" id="project-name" name="name" value="{{project.name}}">
+      <input class="form-control" id="project-name" name="name" value="{{project.name}}" {% if project.is_started %}readonly{% endif %}>
     </div>
     <div class="mb-3">
       <label for="project-questions" class="form-label">Questions (JSON)</label>
-      <textarea class="form-control" id="project-questions" name="questions">{{questions}}</textarea>
+      <textarea class="form-control" id="project-questions" name="questions" {% if project.is_started %}readonly{% endif %}>{{questions}}</textarea>
     </div>
     <div class="mb-3">
       <label for="project-turk-settings" class="form-label">Mechanical Turk settings (JSON)</label>
-      <textarea class="form-control" id="project-turk-settings" name="turk_settings">{{turk_settings}}</textarea>
+      <textarea class="form-control" id="project-turk-settings" name="turk_settings" {% if project.is_started %}readonly{% endif %}>{{turk_settings}}</textarea>
     </div>
-    <button type="submit" class="btn btn-primary">Submit</button>
+    <div class="mb-3">
+      <label for="project-turk-settings" class="form-label">Mechanical Turk credentials (JSON)</label>
+      <textarea class="form-control" id="project-turk-settings" name="turk_credentials">{{turk_credentials}}</textarea>
+      <small class="form-text text-muted">
+          Credentials are only used for the following action, and are not saved to database. Preferably, use temporary credentials, which you can get using AWS CLI. Note that duration should be at least 900 (=15 minutes)<br/>
+          <pre class="mt-3"><code> aws sts get-session-token --output json --duration-seconds <i class="text-primary">duration</i> [--profile <i class="text-primary">profile_name</i>]</code></pre>
+      </small>
+    </div>
+    {% if project.is_started %}
+      {% if preview_url %}
+        <a href="{{preview_url}}" class="btn btn-primary">Preview</a>
+      {% endif %}
+      <button type="submit" name="collect_mturk" value="1" class="btn btn-primary" {{disabled}}>Collect from MTurk</button>
+      <a download="{{project.name}}.json" href="{% url 'project_results' project.id %}" class="btn btn-primary">Download results ({{num_approved_assignments}})</a>
+    {% else %}
+      <button type="submit" class="btn btn-primary" {{disabled}}>Submit Changes</button>
+      <button type="submit" name="start" value="1" class="btn btn-primary" {{disabled}}>Submit and Start</button>
+    {% endif %}
   </form>
 {% endblock %}
 {# vim: set ft=htmldjango: #}

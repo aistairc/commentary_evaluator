@@ -132,9 +132,9 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('segment_created_at', models.DateTimeField()),
+                ('segment_created_at', models.DateTimeField(null=True)),
                 ('turk_assignment_id', models.CharField(max_length=255, null=True)),
-                ('status', models.IntegerField(choices=[(0, 'Pending'), (1, 'Submitted'), (2, 'Rejected'), (3, 'Accepted'), (4, 'Local')])),
+                ('status', models.IntegerField(default=1, choices=[(0, 'Pending'), (1, 'Submitted'), (2, 'Rejected'), (3, 'Accepted'), (4, 'Local')])),
                 ('result', jsonfield.fields.JSONField(null=True)),
                 ('task', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='assignments', to='video_eval_app.task')),
                 ('worker', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='assignments', to='video_eval_app.worker')),

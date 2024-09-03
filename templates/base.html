@@ -85,6 +85,9 @@
                     {% endif %}
                     {% if 'manage_project' in project_perms %}
                       <li class="nav-item">
+                        <a href="{% url 'project_approvals' project.id %}" class="nav-link">Approvals</a>
+                      </li>
+                      <li class="nav-item">
                         <a href="{% url 'project_users' project.id %}" class="nav-link">Users</a>
                       </li>
                       <li class="nav-item">

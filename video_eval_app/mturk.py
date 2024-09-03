@@ -1,0 +1,228 @@
+from icecream import ic
+
+import re
+from datetime import datetime
+import json
+import copy
+
+from django.conf import settings
+from django.template.loader import render_to_string
+from schema import Schema, And, Or, Use, Optional, SchemaError
+import boto3
+import xmltodict
+
+from .utils import convert_answers
+
+
+_title_case_re = re.compile(r'(?<!^)(?=[A-Z])')
+
+class MTurk:
+    statuses = {
+        'Submitted': None,
+        'Approved': True,
+        'Rejected': False,
+    }
+
+    environments = {
+        "live": {
+            "endpoint": "https://mturk-requester.us-east-1.amazonaws.com",
+            "preview": "https://www.mturk.com/mturk/preview",
+            "manage": "https://requester.mturk.com/mturk/manageHITs",
+        },
+        "sandbox": {
+            "endpoint": "https://mturk-requester-sandbox.us-east-1.amazonaws.com",
+            "preview": "https://workersandbox.mturk.com/mturk/preview",
+            "manage": "https://requestersandbox.mturk.com/mturk/manageHITs",
+        },
+    }
+
+    credentials_schema = Schema({
+        'AccessKeyId': Use(str),
+        'SecretAccessKey': Use(str),
+        Optional('SessionToken'): Use(str),
+        'Expiration': Or(datetime, Use(datetime.fromisoformat)),
+        Optional('RegionName'): Use(str),
+        Optional('ProfileName'): Use(str),
+    })
+
+    hit_type_schema = Schema({
+        Optional('AutoApprovalDelayInSeconds'): Use(int),
+        'AssignmentDurationInSeconds': Use(int),
+        'Reward': Use(str),
+        'Title': Use(str),
+        Optional('Keywords'): Use(str),
+        'Description': Use(str),
+        Optional('QualificationRequirements'): [
+            {
+                'QualificationTypeId': Use(str),
+                'Comparator': Or(
+                    'LessThan', 'LessThanOrEqualTo', 'GreaterThan',
+                    'GreaterThanOrEqualTo', 'EqualTo', 'NotEqualTo',
+                    'Exists', 'DoesNotExist', 'In', 'NotIn',
+                ),
+                Optional('IntegerValues'): [
+                    Use(int),
+                ],
+                Optional('LocaleValues'): [
+                    {
+                        'Country': Use(str),
+                        'Subdivision': Use(str),
+                    },
+                ],
+                # DEPRECATED: 'RequiredToPreview': Use(bool),
+                Optional('ActionsGuarded'): Or(
+                    'Accept', 'PreviewAndAccept', 'DiscoverPreviewAndAccept'
+                ),
+            },
+        ],
+        'LifetimeInSeconds': And(Use(int), lambda x: x > 0),
+        Optional('MaxAssignments'): And(Use(int), lambda x: x > 0),
+    })
+
+    @classmethod
+    def validate_credentials(cls, credentials):
+        Schema(dict).validate(credentials)
+        if 'Credentials' in credentials:
+            credentials = credentials['Credentials']
+        return cls.credentials_schema.validate(credentials)
+
+    @classmethod
+    def validate_hit_type(cls, hit_type):
+        return cls.hit_type_schema.validate(hit_type)
+
+    @classmethod
+    def get_environment(cls):
+        return cls.environments["sandbox" if settings.MTURK_SANDBOX else "live"]
+
+    def __init__(self):
+        self.environment = self.get_environment()
+        self.client = None
+
+    def connect(self, request_credentials=None):
+        credentials = settings.MTURK_CREDENTIALS
+        ic(request_credentials)
+        if request_credentials:
+            ic(request_credentials)
+            try:
+                credentials = json.loads(request_credentials)
+            except json.decoder.JSONDecodeError:
+                raise ValueError("AWS credentials not a valid JSON")
+        if credentials is None:
+            raise ValueError("AWS credentials not supplied")
+        if 'Credentials' in credentials:
+            credentials = credentials['Credentials']
+
+        session = boto3.Session(
+            aws_access_key_id=credentials.get('AccessKeyId'),
+            aws_secret_access_key=credentials.get('SecretAccessKey'),
+            aws_session_token=credentials.get('SessionToken'),
+            region_name=credentials.get('RegionName'),
+            profile_name=credentials.get('ProfileName'),
+        )
+        self.client = session.client(
+            'mturk',
+            region_name='us-east-1',
+            endpoint_url=self.environment['endpoint'],
+        )
+
+    def create_hit_type(self, settings):
+        response = self.client.create_hit_type(**settings)
+        hit_type_id = response['HITTypeId']
+        return hit_type_id
+
+    def create_hit(self, task, hit_type_id, lifetime_in_seconds, max_assignments):
+        question = render_to_string('mturk_question.html', {
+            "task": task,
+        })
+        safe_question = question.replace(']]>', ']]]]><![CDATA[>')
+        html_question = f'<HTMLQuestion xmlns="http://mechanicalturk.amazonaws.com/AWSMechanicalTurkDataSchemas/2011-11-11/HTMLQuestion.xsd"><HTMLContent><![CDATA[{safe_question}]]></HTMLContent><FrameHeight>0</FrameHeight></HTMLQuestion>'
+        unique_request_token = f'{settings.UNIQUE_ID}-p{task.project_id}-t{task.id}'
+        response = self.client.create_hit_with_hit_type(
+            HITTypeId=hit_type_id,
+            MaxAssignments=max_assignments,
+            LifetimeInSeconds=lifetime_in_seconds,
+            Question=html_question,
+            RequesterAnnotation=str(task.id),
+            UniqueRequestToken=unique_request_token,
+            # UniqueRequestToken
+        )
+        hit_id = response['HIT']['HITId']
+        type(task).objects.filter(pk=task.id).update(turk_hit_id=hit_id)
+        hit_group_id = response['HIT']['HITGroupId']
+        return hit_group_id
+
+    def get_assignments(self, hit_id, questions):
+        ic("get assignments")
+        response = self.client.list_assignments_for_hit(HITId=hit_id)
+        ic(response)
+        assignments = {}
+        for resp_assignment in response['Assignments']:
+            assignment_id = resp_assignment['AssignmentId']
+            is_approved = self.statuses[resp_assignment['AssignmentStatus']]
+            worker_id = resp_assignment['WorkerId']
+            raw_answers = xmltodict.parse(resp_assignment['Answer'])['QuestionFormAnswers']['Answer']
+            if not isinstance(raw_answers, list):
+                raw_answers = [raw_answers]
+            ic(raw_answers)
+            answers = {
+                answer['QuestionIdentifier']: answer['FreeText']
+                for answer in raw_answers
+            }
+            ic(answers)
+            assignments[assignment_id] = {
+                'result': convert_answers(questions, turk_answers=answers),
+                'is_approved': is_approved,
+                'worker_id': worker_id,
+            }
+            ic(assignments)
+        return assignments
+
+
+    def create_hits(self, project, messages):
+        settings = copy.deepcopy(project.turk_settings)
+        lifetime_in_seconds = settings.pop('LifetimeInSeconds')
+        max_assignments = settings.pop('MaxAssignments')
+
+        hit_type_id = self.create_hit_type(settings)
+
+        try:
+            tasks = project.tasks.prefetch_related('segment', 'project').all()
+            hit_group_id = None
+            for task in tasks:
+                ic(task)
+                try:
+                    hit_group_id = self.create_hit(task, hit_type_id, lifetime_in_seconds, max_assignments)
+                except Exception as x:
+                    messages.append(['error', str(x)])
+        except Exception as x:
+            messages.append(['error', str(x)])
+        return hit_group_id
+
+    def get_account_balance(self):
+        balance = self.client.get_account_balance()['AvailableBalance']
+        return balance
+        
+
+if __name__ == '__main__':
+    import os, django
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "video_evaluation.settings")
+    django.setup()
+
+    from icecream import ic
+    from .models import Project
+    mturk = MTurk()
+    mturk.connect()
+    p = Project.objects.last()
+    ic(mturk.get_assignments('3ACRLU861ULFRDGV3CHU9W6M9YNEB4', p.questions))
+    import sys; sys.exit()
+
+    class MockRequest:
+        POST = {
+            'mturk_credentials': os.environ.get('MTURK_CREDENTIALS'),
+        }
+    # mturk = MTurk(MockRequest())
+    from .models import *
+    project = Project.objects.first()
+    mturk = MTurk()
+    mturk.connect()
+    mturk.create_hits(project)

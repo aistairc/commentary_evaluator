@@ -14,9 +14,10 @@ from webvtt.vtt import WebVTTCueBlock
 from django.conf import settings
 from django.core.files import File
 
-from .models import Segment, DatasetVideo
+from .models import Segment, DatasetVideo, Assignment, Worker
 from .storage import md5
 from .utils import secs_to_timestamp, timestamp_to_secs
+from .mturk import MTurk
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +157,55 @@ def cut_dataset_video(dataset_video):
 
     # mark as cut without triggering post_save
     DatasetVideo.objects.filter(pk=dataset_video.id).update(is_cut=True)
+
+
+from icecream import ic # DEBUG: delete
+def post_project_to_mturk(project, turk_credentials):
+    messages = []
+    is_started = True
+    try:
+        mturk = MTurk()
+        mturk.connect(turk_credentials)
+        turk_hit_group_id = mturk.create_hits(project, messages)
+    except Exception as x:
+        messages.append(['error', str(x)])
+        is_started = False
+    finally:
+        turk_hit_group_id = { 'turk_hit_group_id': turk_hit_group_id } if turk_hit_group_id else {}
+        type(project).objects.filter(pk=project.id).update(
+            is_busy=False, is_started=is_started,
+            messages=messages, **turk_hit_group_id,
+        )
+
+
+def get_assignments_from_mturk(project, turk_credentials):
+    from icecream import ic; project.refresh_from_db(); ic(project.is_started)
+    messages = []
+    try:
+        mturk = MTurk()
+        mturk.connect(turk_credentials)
+        tasks = project.tasks.exclude(turk_hit_id='').prefetch_related('assignments')
+        for task in tasks:
+            turk_assignments = mturk.get_assignments(task.turk_hit_id, project.questions)
+            from icecream import ic; ic(turk_assignments)
+            for turk_assignment_id, turk_assignment in turk_assignments.items():
+                worker, _created = Worker.objects.get_or_create(turk_worker_id=turk_assignment['worker_id'])
+                defaults = {
+                    "worker": worker,
+                    "is_approved": turk_assignment['is_approved'],
+                    "result": turk_assignment['result'],
+                }
+                Assignment.objects.update_or_create(
+                    task=task, turk_assignment_id=turk_assignment_id,
+                    defaults=defaults,
+                )
+    except Exception as x:
+        messages.append(['error', str(x)])
+    finally:
+        type(project).objects.filter(pk=project.id).update(
+            is_busy=False, messages=messages,
+        )
+        project.refresh_from_db(); ic(project.is_started)
 
 
 def vacuum():

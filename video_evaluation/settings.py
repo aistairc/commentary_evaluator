@@ -43,7 +43,7 @@ INSTALLED_APPS = [
     'django_q',
     'invitations',
 
-    'video_eval_app.apps.VideoEvalAppConfig',
+    'video_eval_app',
 ]
 
 MIDDLEWARE = [
@@ -166,6 +166,11 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 1024 * _MB
 INTERNAL_IPS = [
     '127.0.0.1',
 ]
+
+UNIQUE_ID = 'change_me'
+
+MTURK_CREDENTIALS = None
+MTURK_SANDBOX = True
 
 
 if importlib.util.find_spec("django_extensions"):

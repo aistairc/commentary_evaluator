@@ -16,7 +16,7 @@
       {% for dataset in page %}
         <tr>
           <th scope="row">{{ dataset.id }}</th>
-          <td><a href="{% url 'dataset_videos' dataset.id %}">{{ dataset.name }}</a></td>
+          <td><a href="{% url 'dataset_projects' dataset.id %}">{{ dataset.name }}</a></td>
         </tr>
       {% endfor %}
     </tbody>
