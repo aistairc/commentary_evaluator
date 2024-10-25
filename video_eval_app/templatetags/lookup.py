@@ -12,7 +12,6 @@ def lookup(collection, key):
             result = collection[key]
         except IndexError:
             pass
-    from icecream import ic; ic("lookup", collection, key, "=", result) 
     if result is None:
         return ''
     return result

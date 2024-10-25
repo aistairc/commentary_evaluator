@@ -4,6 +4,7 @@ from . import views
 
 urlpatterns = [
     path("", views.index, name="index"),
+    path("credentials", views.credentials, name="credentials"),
     path("datasets", views.datasets, name="datasets"),
     path("datasets/new", views.datasets_new, name="datasets_new"),
     # path("datasets/<int:dataset_id>", views.dataset, name="dataset"),

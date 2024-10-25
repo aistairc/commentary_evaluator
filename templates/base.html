@@ -1,5 +1,6 @@
 {% load static %}
 {% load guardian_tags %}
+{% load parsedate %}
 <!DOCTYPE html>
 <html lang="en">
   <head>
@@ -10,11 +11,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <script src="https://kit.fontawesome.com/6ae513f305.js" crossorigin="anonymous"></script>
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-      integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH"
-      crossorigin="anonymous">
-    <link rel="stylesheet" href="{% static 'css/styles.css' %}" />
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.min.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'video_eval_app/style.css' %}" />
+    <script src="{% static 'video_eval_app/script.js' %}"></script>
   </head>
   <body>
     <!-- TODO: styling -->
@@ -47,55 +47,67 @@
       <div class="row">
         <div class="col-sm-2">
           {% block sidebar %}
-            <ul class="nav flex-column">
+            <ul class="nav nav-pills flex-column">
               <li class="nav-item">
-                <a class="nav-link" href="{% url 'index' %}">Home</a>
+                <a class="nav-link {% if request.current_url_name == 'index' %}active{% endif %}" href="{% url 'index' %}">Home</a>
               </li>
               <li class="nav-item">
-                <a class="nav-link" href="{% url 'datasets' %}">Datasets</a>
+                  <a class="nav-link {% if request.current_url_name == 'datasets' %}active{% endif %}" href="{% url 'datasets' %}">Datasets</a>
                 {% if dataset %}
                   {% get_obj_perms request.user for dataset as "dataset_perms" %}
                   {% if 'manage_dataset' in dataset_perms %}
                     <ul class="nav flex-column ms-3">
                       <li class="nav-item">
-                        <a href="{% url 'dataset_videos' dataset.id %}" class="nav-link">Videos</a>
+                        <a href="{% url 'dataset_videos' dataset.id %}" class="nav-link {% if request.current_url_name == 'dataset_videos' %}active{% endif %}">Videos</a>
                       </li>
                       <li class="nav-item">
-                        <a href="{% url 'dataset_projects' dataset.id %}" class="nav-link">Projects</a>
+                        <a href="{% url 'dataset_projects' dataset.id %}" class="nav-link {% if request.current_url_name == 'dataset_projects' %}active{% endif %}">Projects</a>
                       </li>
                       <li class="nav-item">
-                        <a href="{% url 'dataset_managers' dataset.id %}" class="nav-link">Managers</a>
+                        <a href="{% url 'dataset_managers' dataset.id %}" class="nav-link {% if request.current_url_name == 'dataset_managers' %}active{% endif %}">Managers</a>
                       </li>
                       <li class="nav-item">
-                        <a href="{% url 'dataset_edit' dataset.id %}" class="nav-link">Properties</a>
+                        <a href="{% url 'dataset_edit' dataset.id %}" class="nav-link {% if request.current_url_name == 'dataset_edit' %}active{% endif %}">Properties</a>
                       </li>
                     </ul>
                   {% endif %}
                 {% endif %}
               </li>
               <li class="nav-item">
-                <a class="nav-link" href="{% url 'projects' %}">Projects</a>
+                <a class="nav-link {% if request.current_url_name == 'projects' %}active{% endif %}" href="{% url 'projects' %}">Projects</a>
                 {% if project and project.id %}
                   <ul class="nav flex-column ms-3">
                     {% get_obj_perms request.user for project as "project_perms" %}
                     {% if 'evaluate_project' in project_perms %}
                       <li class="nav-item">
-                        <a href="{% url 'project_eval' project.id %}" class="nav-link">Evaluate</a>
+                        <a href="{% url 'project_eval' project.id %}" class="nav-link {% if request.current_url_name == 'project_eval' %}active{% endif %}">Evaluate</a>
                       </li>
                     {% endif %}
                     {% if 'manage_project' in project_perms %}
                       <li class="nav-item">
-                        <a href="{% url 'project_approvals' project.id %}" class="nav-link">Approvals</a>
+                        <a href="{% url 'project_approvals' project.id %}" class="nav-link {% if request.current_url_name == 'project_approvals' %}active{% endif %}">Approvals</a>
                       </li>
                       <li class="nav-item">
-                        <a href="{% url 'project_users' project.id %}" class="nav-link">Users</a>
+                        <a href="{% url 'project_users' project.id %}" class="nav-link {% if request.current_url_name == 'project_users' %}active{% endif %}">Users</a>
                       </li>
                       <li class="nav-item">
-                        <a href="{% url 'dataset_project' project.dataset.id project.id %}" class="nav-link">Properties</a>
+                        <a href="{% url 'dataset_project' project.dataset.id project.id %}" class="nav-link {% if request.current_url_name == 'dataset_project' %}active{% endif %}">Properties</a>
                       </li>
                     {% endif %}
                   </ul>
                 {% endif %}
+              </li>
+              <li class="nav-item">
+                <a href="{% url 'credentials' %}" class="nav-link {% if request.current_url_name == 'credentials' %}active{% endif %}">AWS credentials
+                {% if request.credentials %}
+                  <br/>
+                  {% if request.credentials.Expiration %}
+                    ({{request.credentials.Expiration|parsedate|timeuntil}})
+                  {% else %}
+                    (Permanent)
+                  {% endif %}
+                {% endif %}
+                </a>
               </li>
               <li class="nav-item">
                 {% if request.user.is_authenticated %}
@@ -106,7 +118,7 @@
                     </button>
                   </form>
                 {% else %}
-                  <a href="{% url 'login' %}" class="nav-link">Login</a>
+                  <a href="{% url 'login' %}" class="nav-link {% if request.current_url_name == 'login' %}active{% endif %}">Login</a>
                 {% endif %}
               </li>
             </ul>

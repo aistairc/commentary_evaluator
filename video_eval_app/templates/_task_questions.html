@@ -3,7 +3,7 @@
 
 <div class="row">
   <div class="col-sm-6 sticky-top">
-    <video class="w-100 mb-3" controls autoplay>
+    <video class="w-100 mb-3" crossorigin="anonymous" controls autoplay>
       <source type="video/mp4" src="{{ task.segment.file.url }}">
       {% if task.segment.subtitles %}
         <track src="{{ task.segment.subtitles.url }}" kind="captions" default>
@@ -42,8 +42,8 @@
           {% if question.type == 'radio' or question.type == 'checkbox' %}
             {% for option in question.options %}
               <div class="form-check">
-                <input class="form-check-input" type="{{ question.type }}" name="q-{{ question.id }}" value="{{ option.value | safe }}" id="q-{{ question.id }}-{{ option.value }}" {% if option.value == answer %}checked{% endif %} {{disabled}}>
-                <label class="form-check-label" for="q-{{ question.id }}-{{ option.value }}">
+                <input class="form-check-input" type="{{ question.type }}" name="q-{{ question.id | escape }}" value="{{ option.value | escape }}" id="q-{{ question.id | escape }}-{{ option.value | escape }}" {% if option.value == answer %}checked{% endif %} {{disabled}}>
+                <label class="form-check-label" for="q-{{ question.id | escape }}-{{ option.value | escape }}">
                   {{ option.text | safe }}
                 </label>
               </div>

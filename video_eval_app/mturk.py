@@ -16,6 +16,23 @@ from .utils import convert_answers
 
 _title_case_re = re.compile(r'(?<!^)(?=[A-Z])')
 
+
+class NoSessionError(Exception): pass
+
+
+def make_aws_session(credentials):
+    if credentials is None:
+        raise ValueError("AWS credentials not supplied")
+
+    session = boto3.Session(
+        aws_access_key_id=credentials.get('AccessKeyId'),
+        aws_secret_access_key=credentials.get('SecretAccessKey'),
+        aws_session_token=credentials.get('SessionToken'),
+        region_name=credentials.get('RegionName'),
+        profile_name=credentials.get('ProfileName'),
+    )
+    return session
+
 class MTurk:
     statuses = {
         'Submitted': None,
@@ -98,27 +115,8 @@ class MTurk:
         self.environment = self.get_environment()
         self.client = None
 
-    def connect(self, request_credentials=None):
-        credentials = settings.MTURK_CREDENTIALS
-        ic(request_credentials)
-        if request_credentials:
-            ic(request_credentials)
-            try:
-                credentials = json.loads(request_credentials)
-            except json.decoder.JSONDecodeError:
-                raise ValueError("AWS credentials not a valid JSON")
-        if credentials is None:
-            raise ValueError("AWS credentials not supplied")
-        if 'Credentials' in credentials:
-            credentials = credentials['Credentials']
-
-        session = boto3.Session(
-            aws_access_key_id=credentials.get('AccessKeyId'),
-            aws_secret_access_key=credentials.get('SecretAccessKey'),
-            aws_session_token=credentials.get('SessionToken'),
-            region_name=credentials.get('RegionName'),
-            profile_name=credentials.get('ProfileName'),
-        )
+    def connect(self, credentials):
+        session = make_aws_session(credentials)
         self.client = session.client(
             'mturk',
             region_name='us-east-1',

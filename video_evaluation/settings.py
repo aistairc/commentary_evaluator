@@ -54,6 +54,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'video_eval_app.middleware.CredentialMiddleware',
+    'video_eval_app.middleware.CurrentURLNameMiddleware',
 ]
 
 AUTHENTICATION_BACKENDS = (
@@ -169,8 +171,19 @@ INTERNAL_IPS = [
 
 UNIQUE_ID = 'change_me'
 
-MTURK_CREDENTIALS = None
 MTURK_SANDBOX = True
+CREDENTIALS_COOKIE_NAME = 'video_eval_aws_credentials'
+
+S3_CORS_RULES = [{
+    'AllowedHeaders': ['Authorization'],
+    'AllowedMethods': ['GET', 'PUT'],
+    'AllowedOrigins': ['*'],
+    'ExposeHeaders': ['ETag', 'x-amz-request-id'],
+    'MaxAgeSeconds': 3000
+}]
+
+
+SQLITE3_BUSY_TIMEOUT = 2000
 
 
 if importlib.util.find_spec("django_extensions"):
