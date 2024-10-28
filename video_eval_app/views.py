@@ -22,7 +22,7 @@ from invitations.utils import get_invitation_model
 import botocore
 import nh3
 
-from video_evaluation.settings import MTURK_SANDBOX
+from video_evaluation.settings import CREDENTIALS_COOKIE_NAME, MTURK_SANDBOX
 
 from .models import *
 from .mturk import MTurk, make_aws_session
@@ -34,6 +34,8 @@ Invitation = get_invitation_model()
 
 
 ITEMS_PER_PAGE = 10
+
+
 
 
 def get_request_credentials(request):

@@ -19,8 +19,12 @@ from django.urls import include, path
 from django.conf import settings
 from django.conf.urls.static import static
 
+from .views import CookieDeletingLogoutView
+
+
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("accounts/logout/", CookieDeletingLogoutView.as_view(), name="logout"),
     path("accounts/", include("django.contrib.auth.urls")),
     path("", include("video_eval_app.urls")),
 ]
