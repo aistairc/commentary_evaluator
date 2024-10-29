@@ -63,10 +63,14 @@ def cut_video(video, audio, start, end, temp_mp4):
             ss=start,
             **opts,
         )
+        out_opts = {
+            "c:v": "copy",
+            "c:a": "aac",
+        }
         ostream = ffmpeg.output(
             vstream['v:0'], astream['a:0'],
             temp_mp4.name,
-            c='copy',
+            **out_opts,
         )
     else:
         ostream = ffmpeg.output(
@@ -98,11 +102,9 @@ def cut_dataset_video(dataset_video, session, location):
     os.makedirs(temp_dir, exist_ok=True)
     dataset_video.segments.all().delete()
     with dataset_video.subtitles.local(session) as subtitles_path:
-        ic(subtitles_path)
         subtitles = load_subtitles(subtitles_path)
     if dataset_video.cuts:
         for cut in dataset_video.cuts:
-            ic(cut)
             start = cut[0]
             end = cut[1] if len(cut) > 1 else None
 
@@ -122,18 +124,13 @@ def cut_dataset_video(dataset_video, session, location):
                 temp_mp4.close()
                 temp_vtt.close()
 
-                ic("cut_video")
                 mp4_file = cut_video(video_path, audio_path, start, end, temp_mp4)
-                ic("cut_subtitles")
                 seg_subtitles = cut_subtitles(subtitles, start, end, temp_vtt)
                 video_file = StoredFile.save(mp4_file, "video_files", session, location, with_md5=True)
                 md5sum = video_file.pop('md5')
-                ic(md5sum)
                 subs_file = StoredFile.save(seg_subtitles, "video_files", session, location)
                 video_file.delocalize(session, location)
                 subs_file.delocalize(session, location)
-                ic(video_file)
-                ic(subs_file)
 
                 segment = Segment.objects.create(
                     md5sum=md5sum,
@@ -143,8 +140,6 @@ def cut_dataset_video(dataset_video, session, location):
                     end=end,
                     subtitles=subs_file,
                 )
-                ic(segment)
-                ic("----")
 
 
 def post_project_to_mturk(project, turk_credentials):
@@ -168,7 +163,6 @@ def post_project_to_mturk(project, turk_credentials):
 
 
 def get_assignments_from_mturk(project, turk_credentials):
-    from icecream import ic; project.refresh_from_db(); ic(project.is_started)
     messages = []
     try:
         mturk = MTurk()
@@ -176,7 +170,6 @@ def get_assignments_from_mturk(project, turk_credentials):
         tasks = project.tasks.exclude(turk_hit_id='').prefetch_related('assignments')
         for task in tasks:
             turk_assignments = mturk.get_assignments(task.turk_hit_id, project.questions)
-            from icecream import ic; ic(turk_assignments)
             for turk_assignment_id, turk_assignment in turk_assignments.items():
                 worker, _created = Worker.objects.get_or_create(turk_worker_id=turk_assignment['worker_id'])
                 defaults = {
@@ -194,7 +187,6 @@ def get_assignments_from_mturk(project, turk_credentials):
         type(project).objects.filter(pk=project.id).update(
             is_busy=False, messages=messages,
         )
-        project.refresh_from_db(); ic(project.is_started)
 
 
 def vacuum():
