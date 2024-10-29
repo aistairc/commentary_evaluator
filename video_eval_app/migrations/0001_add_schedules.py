@@ -15,8 +15,9 @@ def remove_vacuum_task(apps, schema_editor):
     ).delete()
 
 class Migration(migrations.Migration):
+    initial = True
+
     dependencies = [
-        ('video_eval_app', '0001_initial'),
         ('django_q', '0017_task_cluster_alter'),
     ]
 

@@ -9,7 +9,7 @@
     </div>
     <div class="mb-3">
       <label for="dataset-created-by" class="form-label">Created by</label>
-      <input class="form-control" id="dataset-created-by" value="{{dataset.created_by.username}}">
+      <input class="form-control" id="dataset-created-by" value="{{dataset.created_by.username}}" readonly>
     </div>
     <div class="mb-3">
       <label for="dataset-token" class="form-label">Token</label>
@@ -40,13 +40,19 @@
           </script>
         </div>
       </div>
-      <div id="tokenHelp" class="form-text">You can use the token to upload videos from command line (the only mandatory field is <code class="text-primary">file</code>):
-        <pre class="text-wrap user-select-all text-secondary border border-primary rounded p-1"><code>
-          curl -F "file=@<i class="text-primary">video.mp4</i>" -F "audio=@<code class="text-primary">audio.mp4</code> -F "subtitles=@<i class="text-primary">subtitles.srt</i>" -F "cuts=@<i class="text-primary">cuts.json</i>" -F "name=<i class="text-primary">video name</i>" {{upload_video_url}}
-        </code></pre>
+    </div>
+    <div id="tokenHelp" class="form-text">You can use the token to upload videos from command line:
+      <pre class="text-wrap text-secondary border border-primary rounded p-1 mb-0"><code>
+        curl -F "file=@<i class="text-primary">video.mp4</i>" -F "audio=@<code class="text-primary">audio.mp3</code>" -F "subtitles=@<i class="text-primary">subtitles.srt</i>" -F "cuts=@<i class="text-primary">cuts.json</i>" -F "name=<i class="text-primary">video name</i>" -F "credentials=@<i class="text-primary">credentials.json</i>" -F "location=<i class="text-primary">bucket/path</i>" {{upload_video_url}}
+      </code></pre>
+      <div class="mb-3">
+        The only mandatory field is <code class="text-primary">file</code>. You also need to use <code class="text-primary">credentials</code> and <code class="text-primary">location</code>
+        (or a <code class="text-primary">Location</code> key inside <code class="text-primary">credentials</code>)
+        in the form of <code class="text-primary">bucket/path</code>
+        in order to upload the files to S3 storage, as opposed to locally to this server.
       </div>
     </div>
-    <button type="submit" class="btn btn-primary">Submit</button>
+    <button type="submit" class="btn btn-primary">Submit</code>
   </form>
 {% endblock %}
 {# vim: set ft=htmldjango: #}

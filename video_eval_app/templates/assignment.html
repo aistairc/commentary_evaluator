@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h1>Assignment</h1>
+
+  <form method="POST" enctype="multipart/form-data">
+    {% csrf_token %}
+
+    {% with disabled='disabled' %}
+      {% include '_task_questions.html' %}
+    {% endwith %}
+  </form>
+{% endblock %}
+{# vim: set ft=htmldjango: #}

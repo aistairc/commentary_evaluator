@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h1>Approvals</h1>
+
+  {% include '_paginator.html' %}
+
+  <table class="table">
+    <thead>
+      <tr>
+        <th scope="col">ID</th>
+        <th scope="col">Video</th>
+        <th scope="col">Segment</th>
+        <th scope="col">Worker ID</th>
+        <th scope="col">Platform</th>
+        <th scope="col">Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for assignment in page %}
+        {% with assignment.task.segment as segment %}
+          <tr>
+            <th scope="row">{{ assignment.id }}</th>
+            <td>{{ segment.dataset_video.name }}</td>
+            <td><a href="{% url 'assignment' assignment.id %}">{{segment.start_ts}} &ndash; {{segment.end_ts}}</a></td>
+            <td>{{ assignment.worker_id }}</td>
+            <td>
+              {% if assignment.turk_assignment_id %}
+                MTurk
+              {% else %}
+                Local
+              {% endif %}
+            </td>
+            <td>
+              {% if assignment.is_approved is None %}
+                <form method="POST" action="{% url 'assignment' assignment.id %}">
+                  {% csrf_token %}
+                  <button name="approve" class="btn btn-light btn-sm py-0 px-1">
+                    <i class="fa-solid fa-check"></i>
+                  </button>
+                </form>
+              {% else %}
+                <a class="btn btn-{% if assignment.is_approved %}success{% else %}danger{% endif %} btn-sm py-0 px-1" href="{% url 'assignment' assignment.id %}">
+                  <i class="fa-solid fa-{% if assignment.is_approved is not False %}check{% else %}xmark{% endif %}"></i>
+                </a>
+              {% endif %}
+            </td>
+          </tr>
+        {% endwith %}
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% include '_paginator.html' %}
+{% endblock %}
+{# vim: set ft=htmldjango: #}

@@ -8,6 +8,9 @@ setuptools
 honcho
 jsonfield
 django-invitations
+schema
+xmltodict
+nh3
 
 # OPTIONAL
 django-debug-toolbar

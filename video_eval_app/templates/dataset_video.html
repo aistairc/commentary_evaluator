@@ -21,17 +21,30 @@
     </div>
     <div class="mb-3">
       <label for="video-audio" class="form-label">Audio file (<code>.mp3</code>, <code>.aac</code> or <code>.wav</code>)</label>
-      <input type="file" class="form-control" id="video-file" name="subtitles" accept=".mp3,.aac,.wav">
+      <input type="file" class="form-control" id="video-audio" name="audio" accept=".mp3,.aac,.wav">
     </div>
     <div class="mb-3">
       <label for="video-cuts" class="form-label">Cut file (<code>.json</code>)</label>
       <input type="file" class="form-control" id="video-cuts" name="cuts" accept=".json">
     </div>
+    <div class="mb-3">
+      <label for="dataset-aws-location" class="form-label">AWS S3 video upload location (as <code class="text-primary">bucket/path</code>)</label>
+      <input class="form-control" name="location" id="dataset-aws-location" value="{{location}}">
+    </div>
+    <div class="mb-3">
+      <label for="dataset-aws-settings" class="form-label">AWS credentials (JSON), possibly with <code class="text-primary">Location</code> added, if not specified above</label>
+      <textarea class="form-control" id="dataset-aws-settings" name="credentials">{{credentials}}</textarea>
+      <small class="form-text text-muted">
+          If you wish to upload the files to AWS S3, you should also supply AWS credentials.<br/>
+          Credentials will only be used for the requested action, and are not saved to database. Preferably, use temporary credentials, which you can get using AWS CLI. Note that duration should be between 900 (=15 minutes) and 129600 (36 hours)<br/>
+          <pre class="text-wrap text-secondary border border-primary rounded p-1"><code> aws sts get-session-token --output json --duration-seconds <i class="text-primary">duration</i> [--profile <i class="text-primary">profile_name</i>]</code></pre>
+      </small>
+    </div>
     <button type="submit" class="btn btn-primary">Submit</button>
   </form>
 
   {% if dataset_video.id %}
-    <video controls autoplay class="mt-3">
+    <video crossorigin="anonymous" controls autoplay class="mt-3">
       <source type="video/mp4" src="{{ dataset_video.video.file.url }}">
       {% if dataset_video.subtitles %}
         <track src="{{ dataset_video.subtitles.url }}" kind="captions" default>

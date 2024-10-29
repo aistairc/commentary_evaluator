@@ -1,0 +1,61 @@
+{# params: task #}
+{% load lookup %}
+
+<div class="row">
+  <div class="col-sm-6 sticky-top">
+    <video class="w-100 mb-3" crossorigin="anonymous" controls autoplay>
+      <source type="video/mp4" src="{{ task.segment.file.url }}">
+      {% if task.segment.subtitles %}
+        <track src="{{ task.segment.subtitles.url }}" kind="captions" default>
+      {% endif %}
+    </video>
+
+    {% if assignment %}
+      {% if assignment.turk_assignment_id %}
+        <label for="feedback">
+          MTurk Feedback
+        </label>
+        <input class="form-control mb-3" id="feedback" type="text" name="feedback" autofocus>
+      {% endif %}
+      {% if assignment.is_approved is not True %}
+        <button type="submit" class="btn btn-success" name="approve" value="1">Approve</button>
+      {% else %}
+        <span class="text-success">Approved</span>
+      {% endif %}
+      {% if assignment.is_approved is Null %}
+        <button type="submit" class="btn btn-danger float-end" name="reject" value="1">Reject</button>
+      {% elif assignment.is_approved is False %}
+        <span class="text-danger float-end">Rejected</span>
+      {% endif %}
+    {% else %}
+      <button type="submit" class="btn btn-primary">Submit</button>
+    {% endif %}
+  </div>
+
+  <div class="col-sm-6">
+    {% for question in task.project.questions %}
+      {% with answer=assignment.result|lookup:question.id %}
+        <fieldset class="form-group mb-3">
+          <div>
+            {{ question.instruction | safe }}
+          </div>
+          {% if question.type == 'radio' or question.type == 'checkbox' %}
+            {% for option in question.options %}
+              <div class="form-check">
+                <input class="form-check-input" type="{{ question.type }}" name="q-{{ question.id | escape }}" value="{{ option.value | escape }}" id="q-{{ question.id | escape }}-{{ option.value | escape }}" {% if option.value == answer %}checked{% endif %} {{disabled}}>
+                <label class="form-check-label" for="q-{{ question.id | escape }}-{{ option.value | escape }}">
+                  {{ option.text | safe }}
+                </label>
+              </div>
+            {% endfor %}
+          {% elif question.type == 'text' %}
+            <input class="form-control" type="text" name="q-{{ question.id }}" id="q-{{ question.id }}" value="{{answer}}" {{disabled}}>
+          {% endif %}
+        </fieldset>
+      {% endwith %}
+    {% endfor %}
+  </div>
+  <div style="height: 10000px; bg-color: red;">
+  </div>
+</div>
+

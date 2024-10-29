@@ -27,7 +27,6 @@
             {% endif %}
             {% if row.manage_project_perm %}
               <a href="{% url 'dataset_project' row.project.dataset.id row.project.id %}"><i class="fa-solid fa-pen-to-square"></i></a>
-              <a download="{{row.project.name}}.json" href="{% url 'project_results' row.project.id %}"><i class="fa-solid fa-file-arrow-down"></i></a>
             {% endif %}
           </td>
           <td>

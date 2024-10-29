@@ -1,0 +1,3 @@
+textarea:not([readonly]), input:not([readonly]) {
+  background-color: #eeeeee !important;
+}

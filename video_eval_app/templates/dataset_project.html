@@ -3,22 +3,72 @@
 {% block content %}
   <h2>Dataset Project</h1>
 
+
   <form method="POST" enctype="multipart/form-data">
     {% csrf_token %}
+
+    {% if project_messages %}
+      <div class="small">
+        {% for message in project_messages %}
+          <div class="alert alert-{{message.0}} p-1 m-1" role="alert">
+            {{message.1}}
+          </div>
+        {% endfor %}
+        <button type="submit" name="dismiss_messages" value="1" class="btn btn-primary btn-sm mb-3">Dismiss</button>
+      </div>
+    {% endif %}
+
     <input type="hidden" name="id" value="{{project.id}}">
     <div class="mb-3">
       <label for="project-name" class="form-label">Name</label>
-      <input class="form-control" id="project-name" name="name" value="{{project.name}}">
+      <input class="form-control" id="project-name" name="name" value="{{project.name}}" {% if project.is_started %}readonly{% endif %}>
     </div>
     <div class="mb-3">
-      <label for="project-questions" class="form-label">Questions (JSON)</label>
-      <textarea class="form-control" id="project-questions" name="questions">{{questions}}</textarea>
+      <label for="project-questions" class="form-label">Questions (JSON)</label> <button class="btn btn-primary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#q-example">example</button>
+      <pre id="q-example" class="collapse text-secondary border border-primary rounded p-1 mb-0"><code>[
+  {
+    "id": "question ID",
+    "instruction": "&lt;p&gt;Question text in &lt;b&gt;HTML&lt;/b&gt;&lt;/p&gt;",
+    "type": "checkbox",<span class="text-info user-select-none"> (or "radio", "text")</span>
+    "options": [<span class="text-info user-select-none"> (not used for "text" questions)</span>
+      { "value": 1, "text": "option 1 text in &lt;b&gt;HTML&lt;/b&gt;" }<span class="text-info user-select-none">,
+      more options...</span>
+    ]
+  }<span class="text-info user-select-none">, {
+    more questions...
+  }</span>
+]</code></pre>
+      <textarea class="form-control" id="project-questions" name="questions" rows="5" {% if project.is_started %}readonly{% endif %}>{{questions}}</textarea>
     </div>
     <div class="mb-3">
-      <label for="project-turk-settings" class="form-label">Mechanical Turk settings (JSON)</label>
-      <textarea class="form-control" id="project-turk-settings" name="turk_settings">{{turk_settings}}</textarea>
+      <label for="project-turk-settings" class="form-label">Mechanical Turk settings (JSON)</label> (<a href="https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/mturk/client/create_hit_type.html">Reference</a>) <button class="btn btn-primary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#s-example">example</button>
+      <pre id="s-example" class="collapse text-secondary border border-primary rounded p-1 mb-0"><code>{
+  "AssignmentDurationInSeconds": 3600,
+  "Reward": "0.05",
+  "Title": "Project Title",
+  "Keywords": "video, keyword1, etc",
+  "Description": "Project Description",
+  "LifetimeInSeconds": 3600,
+  "MaxAssignments": 1
+}</code></pre>
+      <textarea class="form-control" id="project-turk-settings" name="turk_settings" rows="5" {% if project.is_started %}readonly{% endif %}>{{turk_settings}}</textarea>
+      <small class="form-text text-muted">
+      </small>
     </div>
-    <button type="submit" class="btn btn-primary">Submit</button>
+    {% if project.is_started %}
+      {% if preview_url %}
+        <a href="{{preview_url}}" class="btn btn-primary">Preview</a>
+        <button type="submit" name="collect_mturk" value="1" class="btn btn-primary" {{cred_busy_disabled}}>Collect from MTurk</button>
+      {% endif %}
+      <a download="{{project.name}}.json" href="{% url 'project_results' project.id %}" class="btn btn-primary">Download results ({{num_approved_assignments}})</a>
+    {% else %}
+      <button type="submit" class="btn btn-primary" {{busy_disabled}}>Submit Changes</button>
+      <button type="submit" name="start" value="1" class="btn btn-primary" {{busy_disabled}}>Submit and Start</button>
+    {% endif %}
   </form>
+  <script>
+    highlightOnClick(document.querySelector("#q-example"))
+    highlightOnClick(document.querySelector("#s-example"))
+  </script>
 {% endblock %}
 {# vim: set ft=htmldjango: #}

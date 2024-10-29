@@ -1,5 +1,5 @@
 # Usage: honcho -f Procfile.dev start
 
-app: ./manage.py runserver
+app: ./manage.py runserver 7994
 # app: uvicorn --reload video_evaluation.asgi:application --reload-include "*.py" --reload-include "*.html" --reload-include "*.css"
 tasks: ./manage.py qcluster
