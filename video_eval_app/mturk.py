@@ -150,9 +150,7 @@ class MTurk:
         return hit_group_id
 
     def get_assignments(self, hit_id, questions):
-        ic("get assignments")
         response = self.client.list_assignments_for_hit(HITId=hit_id)
-        ic(response)
         assignments = {}
         for resp_assignment in response['Assignments']:
             assignment_id = resp_assignment['AssignmentId']
@@ -161,18 +159,15 @@ class MTurk:
             raw_answers = xmltodict.parse(resp_assignment['Answer'])['QuestionFormAnswers']['Answer']
             if not isinstance(raw_answers, list):
                 raw_answers = [raw_answers]
-            ic(raw_answers)
             answers = {
                 answer['QuestionIdentifier']: answer['FreeText']
                 for answer in raw_answers
             }
-            ic(answers)
             assignments[assignment_id] = {
                 'result': convert_answers(questions, turk_answers=answers),
                 'is_approved': is_approved,
                 'worker_id': worker_id,
             }
-            ic(assignments)
         return assignments
 
 
@@ -187,7 +182,6 @@ class MTurk:
             tasks = project.tasks.prefetch_related('segment', 'project').all()
             hit_group_id = None
             for task in tasks:
-                ic(task)
                 try:
                     hit_group_id = self.create_hit(task, hit_type_id, lifetime_in_seconds, max_assignments)
                 except Exception as x:
@@ -211,7 +205,6 @@ if __name__ == '__main__':
     mturk = MTurk()
     mturk.connect()
     p = Project.objects.last()
-    ic(mturk.get_assignments('3ACRLU861ULFRDGV3CHU9W6M9YNEB4', p.questions))
     import sys; sys.exit()
 
     class MockRequest:
