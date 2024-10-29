@@ -11,6 +11,7 @@ django-invitations
 schema
 xmltodict
 nh3
+boto3
 
 # OPTIONAL
 django-debug-toolbar

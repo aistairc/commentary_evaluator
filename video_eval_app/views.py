@@ -43,10 +43,13 @@ def get_request_credentials(request):
         raw_credentials = file_credentials.read().decode()
     else:
         raw_credentials = request.POST.get('credentials')
-    try:
-        credentials = json.loads(raw_credentials)
-    except json.decoder.JSONDecodeError:
-        raise ValueError("AWS credentials are not a valid JSON")
+    if raw_credentials:
+        try:
+            credentials = json.loads(raw_credentials)
+        except json.decoder.JSONDecodeError:
+            raise ValueError("AWS credentials are not a valid JSON")
+    else:
+        return None
     if 'Credentials' in credentials:
         credentials = credentials['Credentials']
 
@@ -78,7 +81,7 @@ def get_request_credentials(request):
 
 
 def upload_video(request, dataset, credentials):
-    location = credentials.pop('Location')
+    location = credentials and credentials.pop('Location')
     session = credentials and location and make_aws_session(credentials)
 
     video_file = StoredFile.save(request.FILES["file"], "video_files", session, location, with_md5=True)
