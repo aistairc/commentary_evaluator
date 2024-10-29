@@ -37,7 +37,6 @@ def cut_and_delocalize_video(dataset_video, credentials, location):
         dataset_video.audio.delocalize(session, location)
     if dataset_video.subtitles:
         dataset_video.subtitles.delocalize(session, location)
-    ic(dataset_video)
     # save dataset video to DB
     dataset_video.is_cut = True
     dataset_video.save()
@@ -99,8 +98,8 @@ def cut_dataset_video(dataset_video, session, location):
     os.makedirs(temp_dir, exist_ok=True)
     dataset_video.segments.all().delete()
     with dataset_video.subtitles.local(session) as subtitles_path:
+        ic(subtitles_path)
         subtitles = load_subtitles(subtitles_path)
-    ic(subtitles)
     if dataset_video.cuts:
         for cut in dataset_video.cuts:
             ic(cut)

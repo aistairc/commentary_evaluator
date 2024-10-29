@@ -1,10 +1,13 @@
-from icecream import ic
+from icecream import ic # XXX: delete later
 
 from django.contrib.admin.options import messages
 
 import json
 from datetime import datetime
+from io import BytesIO
+import os
 
+from django.core.files import File
 from django.conf import settings
 from django.shortcuts import HttpResponseRedirect, render, redirect
 from django.http import HttpResponse, JsonResponse, Http404
@@ -26,7 +29,7 @@ from video_evaluation.settings import CREDENTIALS_COOKIE_NAME, MTURK_SANDBOX
 
 from .models import *
 from .mturk import MTurk, make_aws_session
-from .utils import convert_answers
+from .utils import convert_answers, load_subtitles
 from .storage import StoredFile
 
 
@@ -85,8 +88,17 @@ def upload_video(request, dataset, credentials):
     session = credentials and location and make_aws_session(credentials)
 
     video_file = StoredFile.save(request.FILES["file"], "video_files", session, location, with_md5=True)
-    subtitles = StoredFile.save(request.FILES.get("subtitles"), "sub_files", session, location)
     audio = StoredFile.save(request.FILES.get("audio"), "audio_files", session, location)
+    if raw_subtitles_file := request.FILES.get('subtitles'):
+        with raw_subtitles_file.open('rb') as r:
+            raw_subs = r.read()
+        subs = load_subtitles(sub_contents=raw_subs)
+        subs_base, _ = os.path.splitext(raw_subtitles_file.name)
+        subs_name = f"{subs_base}.vtt"
+        subs_file = File(file=BytesIO(subs.content.encode()), name=subs_name)
+    else:
+        subs_file = None
+    subtitles = StoredFile.save(subs_file, "sub_files", session, location)
     cuts = request.FILES.get('cuts')
     if cuts:
         with cuts.open('rt') as r:

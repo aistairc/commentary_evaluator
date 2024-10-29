@@ -1,3 +1,5 @@
+from icecream import ic # XXX: delete later
+
 import csv
 import codecs
 from io import BytesIO, StringIO
@@ -6,7 +8,6 @@ from webvtt import WebVTT, Caption # https://pypi.org/project/webvtt-py/
 from webvtt.models import Timestamp
 from webvtt.srt import SRTCueBlock
 from webvtt.sbv import SBVCueBlock
-from webvtt.vtt import WebVTTCueBlock
 
 
 def secs_to_timestamp(secs):
@@ -95,7 +96,7 @@ def load_subtitles_from_csv(text_contents):
 
 def load_subtitles(subtitles_path=None, sub_contents=None):
     if subtitles_path is None:
-        if sub_content is None:
+        if sub_contents is None:
             return None
     else:
         with open(subtitles_path, "rb") as r:
@@ -105,13 +106,17 @@ def load_subtitles(subtitles_path=None, sub_contents=None):
             sub_contents = sub_contents[len(codecs.BOM_UTF8):]
     text_contents = sub_contents.decode()
     lines = text_contents.splitlines()
+    if not lines:
+        return None
+
     # try to detect format:
-    if SRTCueBlock.is_valid(lines):
+    maybe_vtt, *rest = lines[0].split(maxsplit=1)
+    if maybe_vtt == "WEBVTT":
+        format = 'vtt'
+    elif SRTCueBlock.is_valid(lines):
         format = 'srt'
     elif SBVCueBlock.is_valid(lines):
         format = 'sbv'
-    elif WebVTTCueBlock.is_valid(lines):
-        format = 'vtt'
     else:
         format = 'csv'
     if format == 'csv':
