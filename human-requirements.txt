@@ -17,3 +17,6 @@ boto3
 django-debug-toolbar
 django-extensions
 django-browser-reload
+
+# while debugging `ic()` statements are present
+icecream
