@@ -391,6 +391,7 @@ def projects(request):
     page.object_list = [
         {
             "project": project,
+            "evaluate": True,
             "manage_project_perm": project.id in manage_project_ids,
             "evaluate_project_perm": project.id in evaluate_project_ids,
             "manage_dataset_perm": project.dataset.id in manage_dataset_ids,
@@ -597,6 +598,7 @@ def project_eval(request, project_id):
     return render(request, 'project_eval.html', {
         'dataset': project.dataset,
         'project': project,
+        'evaluate': True,
         'task': task,
         'dataset_video': task and task.segment.dataset_video,
     })

@@ -44,6 +44,13 @@
           {% endif %}
         </div>
       </header>
+
+      {% if dataset and dataset.id %}
+        {% get_obj_perms request.user for dataset as "dataset_perms" %}
+        {% if project and project.id %}
+          {% get_obj_perms request.user for project as "project_perms" %}
+        {% endif %}
+      {% endif %}
       <div class="row">
         <div class="col-sm-2">
           {% block sidebar %}
@@ -53,61 +60,84 @@
               </li>
               {% if request.user.is_authenticated %}
                 <li class="nav-item">
-                    <a class="nav-link {% if request.current_url_name == 'datasets' %}active{% endif %}" href="{% url 'datasets' %}">Datasets</a>
-                  {% if dataset %}
-                    {% get_obj_perms request.user for dataset as "dataset_perms" %}
+                  <a class="nav-link {% if request.current_url_name == 'datasets' %}active{% endif %}" href="{% url 'datasets' %}">
+                    Manage Datasets
+                    {% if dataset and not evaluate %}
+                      <div class="text-dark">
+                        {{dataset.name}}
+                      </div>
+                    {% endif %}
+                  </a>
+                  {% if dataset and not evaluate %}
                     {% if 'manage_dataset' in dataset_perms %}
                       <ul class="nav flex-column ms-3">
                         <li class="nav-item">
-                          <a href="{% url 'dataset_videos' dataset.id %}" class="nav-link {% if request.current_url_name == 'dataset_videos' %}active{% endif %}">Videos</a>
+                          <a href="{% url 'dataset_edit' dataset.id %}" class="nav-link {% if request.current_url_name == 'dataset_edit' %}active{% endif %}">Properties</a>
                         </li>
                         <li class="nav-item">
-                          <a href="{% url 'dataset_projects' dataset.id %}" class="nav-link {% if request.current_url_name == 'dataset_projects' %}active{% endif %}">Projects</a>
+                          <a href="{% url 'dataset_videos' dataset.id %}" class="nav-link {% if request.current_url_name == 'dataset_videos' %}active{% endif %}">Videos</a>
                         </li>
                         <li class="nav-item">
                           <a href="{% url 'dataset_managers' dataset.id %}" class="nav-link {% if request.current_url_name == 'dataset_managers' %}active{% endif %}">Managers</a>
                         </li>
                         <li class="nav-item">
-                          <a href="{% url 'dataset_edit' dataset.id %}" class="nav-link {% if request.current_url_name == 'dataset_edit' %}active{% endif %}">Properties</a>
+                          <a href="{% url 'dataset_projects' dataset.id %}" class="nav-link {% if request.current_url_name == 'dataset_projects' %}active{% endif %}">
+                            Projects
+                            {% if project and project.id %}
+                              <div class="text-dark">
+                                {{project.name}}
+                              </div>
+                            {% endif %}
+                          </a>
+                          {% if project and project.id %}
+                            <ul class="nav flex-column ms-3">
+                              {% if 'manage_project' in project_perms %}
+                                <li class="nav-item">
+                                  <a href="{% url 'dataset_project' project.dataset.id project.id %}" class="nav-link {% if request.current_url_name == 'dataset_project' %}active{% endif %}">Properties</a>
+                                </li>
+                                <li class="nav-item">
+                                  <a href="{% url 'project_approvals' project.id %}" class="nav-link {% if request.current_url_name == 'project_approvals' %}active{% endif %}">Approvals</a>
+                                </li>
+                                <li class="nav-item">
+                                  <a href="{% url 'project_users' project.id %}" class="nav-link {% if request.current_url_name == 'project_users' %}active{% endif %}">Users</a>
+                                </li>
+                              {% endif %}
+                            </ul>
+                          {% endif %}
                         </li>
                       </ul>
                     {% endif %}
                   {% endif %}
                 </li>
                 <li class="nav-item">
-                  <a class="nav-link {% if request.current_url_name == 'projects' %}active{% endif %}" href="{% url 'projects' %}">Projects</a>
-                  {% if project and project.id %}
+                  <a class="nav-link {% if request.current_url_name == 'projects' %}active{% endif %}" href="{% url 'projects' %}">
+                    Evaluate Projects
+                    {% if evaluate and project and project.id and 'evaluate_project' in project_perms %}
+                      <div class="text-dark">
+                        {{project.name}}
+                      </div>
+                    {% endif %}
+                  </a>
+                  {% if evaluate and project and project.id and 'evaluate_project' in project_perms %}
                     <ul class="nav flex-column ms-3">
-                      {% get_obj_perms request.user for project as "project_perms" %}
-                      {% if 'evaluate_project' in project_perms %}
-                        <li class="nav-item">
-                          <a href="{% url 'project_eval' project.id %}" class="nav-link {% if request.current_url_name == 'project_eval' %}active{% endif %}">Evaluate</a>
-                        </li>
-                      {% endif %}
-                      {% if 'manage_project' in project_perms %}
-                        <li class="nav-item">
-                          <a href="{% url 'project_approvals' project.id %}" class="nav-link {% if request.current_url_name == 'project_approvals' %}active{% endif %}">Approvals</a>
-                        </li>
-                        <li class="nav-item">
-                          <a href="{% url 'project_users' project.id %}" class="nav-link {% if request.current_url_name == 'project_users' %}active{% endif %}">Users</a>
-                        </li>
-                        <li class="nav-item">
-                          <a href="{% url 'dataset_project' project.dataset.id project.id %}" class="nav-link {% if request.current_url_name == 'dataset_project' %}active{% endif %}">Properties</a>
-                        </li>
-                      {% endif %}
+                      <li class="nav-item">
+                        <a href="{% url 'project_eval' project.id %}" class="nav-link {% if request.current_url_name == 'project_eval' %}active{% endif %}">Evaluate</a>
+                      </li>
                     </ul>
                   {% endif %}
                 </li>
                 <li class="nav-item">
-                  <a href="{% url 'credentials' %}" class="nav-link {% if request.current_url_name == 'credentials' %}active{% endif %}">AWS credentials
-                  {% if request.credentials %}
-                    <br/>
-                    {% if request.credentials.Expiration %}
-                      ({{request.credentials.Expiration|parsedate|timeuntil}})
-                    {% else %}
-                      (Permanent)
+                  <a href="{% url 'credentials' %}" class="nav-link {% if request.current_url_name == 'credentials' %}active{% endif %}">
+                    AWS credentials
+                    {% if request.credentials %}
+                      <div class="text-{% if request.current_url_name == 'credentials' %}white{% else %}dark{% endif %}">
+                        {% if request.credentials.Expiration %}
+                          ({{request.credentials.Expiration|parsedate|timeuntil}})
+                        {% else %}
+                          (Permanent)
+                        {% endif %}
+                      </div>
                     {% endif %}
-                  {% endif %}
                   </a>
                 </li>
               {% endif %}

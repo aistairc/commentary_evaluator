@@ -1,3 +1,12 @@
 textarea:not([readonly]), input:not([readonly]) {
   background-color: #eeeeee !important;
 }
+
+.nav-pills .nav-link.active a, .nav-pills .show>.nav-link a {
+  color: var(--bs-nav-pills-link-active-color);
+  background-color: var(--bs-nav-pills-link-active-bg);
+}
+
+.nav-link a {
+  text-decoration: none;
+}
