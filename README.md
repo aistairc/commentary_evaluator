@@ -24,7 +24,7 @@ SECRET_KEY = 'some long and unguessable string, typically 60+ random printable A
 
 # For production:
 # DEBUG = False
-# ALLOWED_HOSTS = ['127.0.0.1'] # see https://docs.djangoproject.com/en/5.0/ref/settings/#allowed-hosts
+# ALLOWED_HOSTS = ['127.0.0.1', 'localhost'] # see https://docs.djangoproject.com/en/5.0/ref/settings/#allowed-hosts
 # DATABASES = { ... } # see https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 # MEDIA_ROOT = '...'
 # STATIC_ROOT = '...'
@@ -33,7 +33,7 @@ SECRET_KEY = 'some long and unguessable string, typically 60+ random printable A
 # FILE_UPLOAD_MAX_MEMORY_SIZE = 1024 * _MB
 ```
 
-Edit `Procfile` to choose the port
+Edit `Procfile` to choose the port.
 
 ## Finishing setup
 
@@ -56,6 +56,14 @@ and then set up reverse proxy for the app, and make sure `STATIC_ROOT` and `MEDI
 honcho start
 ```
 
+Honcho runs processes from `Procfile` in parallel. Each process is one line (except for blank lines, or comment lines starting with `#`).
+This software uses two processes: a Django process for serving the web application, and a Django Q process for serving the task queue.
+You can use an alternative `Procfile` by specifying it like this: 
+
+```
+honcho -f Procfile.dev start
+```
+
 ## Terms
 
 - Dataset: collection of Videos+audios+subtitles and cut definition JSON - cut into Segments
@@ -65,19 +73,18 @@ honcho start
 
 ## Flow
 
-- Admin creates users (plan for later: Project managers will invite users)
+- Admin creates users in `/admin` URL
 - Admin assigns "Video Eval App | dataset | can add dataset" permission to trusted users
 - If those users create a Dataset, they will become a Dataset Manager for that Dataset
 - Dataset managers can upload videos (+audio, +subtitles) into a Dataset
 - They can add other users as Dataset Managers. They can also create projects in that Dataset, and thus become Project Managers for those Projects
-- Project Managers can appoint additional Project Managers, as well as Project Evaluators
+- Project Managers can appoint additional Project Managers, as well as Project Evaluators; they can also upload the files and Tasks to AWS, by using AWS credentials
 - Project Evaluators can work on Tasks, answering Project-defined questions on each Segment of the Dataset
 - Project Managers can at any time download the results of the evaluation in their Project
 
 ## Caveats (early alpha version)
 
-* Users must be created by superuser. Later I intend to integrate an email invitation system, available to the Project Managers.
 - A user that will create a dataset must be manually given the permission `Video Eval App | dataset | can add dataset` in the Admin interface (`http://localhost:3000/admin` -> Users -> [user] -> User permissions (Admin can also create a dataset, they don't need a permission)
-- I have not worked on deletion yet; anything deleted from the Admin interface may leave behind artefacts, and orphaned files in `MEDIA_ROOT`
+- I have not worked on deletion yet; anything deleted from the Admin interface may leave behind artefacts, and orphaned files in `MEDIA_ROOT` (or S3)
 - User interface could be made much prettier
 - There are very likely other bugs, and many unpoplished edges
