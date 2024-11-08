@@ -321,7 +321,7 @@ def dataset_project(request, dataset_id, project_id=None):
             questions = json.loads(request.POST["questions"])
             for question in questions:
                 question["instruction"] = nh3.clean(question["instruction"])
-                if options := question["options"]:
+                if options := question.get("options"):
                     for option in options:
                         option["text"] = nh3.clean(option["text"])
             defaults = {
@@ -347,8 +347,9 @@ def dataset_project(request, dataset_id, project_id=None):
                 if turk_settings:
                     # get MTurk client and check if it works
                     mturk = MTurk()
-                    mturk.connect(request.credentials)
-                    mturk.get_account_balance()
+                    if mturk.client:
+                        mturk.connect(request.credentials)
+                        mturk.get_account_balance()
 
                 project.is_started = True
                 project.save()
@@ -359,7 +360,7 @@ def dataset_project(request, dataset_id, project_id=None):
                 ]
                 Task.objects.bulk_create(tasks)
 
-                if turk_settings:
+                if mturk.client:
                     async_task(
                         'video_eval_app.tasks.post_project_to_mturk',
                         project, request.credentials,

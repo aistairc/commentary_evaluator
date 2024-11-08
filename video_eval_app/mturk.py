@@ -22,7 +22,7 @@ class NoSessionError(Exception): pass
 
 def make_aws_session(credentials):
     if credentials is None:
-        raise ValueError("AWS credentials not supplied")
+        return None
 
     session = boto3.Session(
         aws_access_key_id=credentials.get('AccessKeyId'),
@@ -117,11 +117,12 @@ class MTurk:
 
     def connect(self, credentials):
         session = make_aws_session(credentials)
-        self.client = session.client(
-            'mturk',
-            region_name='us-east-1',
-            endpoint_url=self.environment['endpoint'],
-        )
+        if session:
+            self.client = session.client(
+                'mturk',
+                region_name='us-east-1',
+                endpoint_url=self.environment['endpoint'],
+            )
 
     def create_hit_type(self, settings):
         response = self.client.create_hit_type(**settings)
