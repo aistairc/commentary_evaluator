@@ -16,14 +16,18 @@ from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_safe
+from django.db import transaction
 from django.db.utils import IntegrityError
 from django.db.models import Exists, OuterRef
 from django.utils.safestring import SafeString
 from django.contrib.auth import login
+from django.contrib.contenttypes.models import ContentType
 from guardian.shortcuts import assign_perm, remove_perm, get_objects_for_user, get_users_with_perms
 from invitations.utils import get_invitation_model
 import botocore
 import nh3
+from guardian.models import UserObjectPermission
+
 
 from video_evaluation.settings import CREDENTIALS_COOKIE_NAME, MTURK_SANDBOX
 
@@ -111,18 +115,42 @@ def upload_video(request, dataset, credentials):
         "file": video_file,
         # "created_by": request.user, # XXX: move token to UserProfile?
     })
+    name = request.POST.get('name', '') or request.FILES["file"].name
     dataset_video = DatasetVideo.objects.create(
         dataset=dataset,
         video=video,
         subtitles=subtitles,
         audio=audio,
-        name=request.POST.get('name', ''),
+        name=name,
         cuts=cuts_data,
     )
     async_task(
         'video_eval_app.tasks.cut_and_delocalize_video',
         dataset_video, credentials, location,
     )
+
+
+def bulk_remove_perm(perm, query, obj):
+    content_type = ContentType.objects.get_for_model(obj)
+    UserObjectPermission.objects.filter(
+        permission__codename=perm,
+        user__in=query,
+        content_type=content_type,
+        object_pk=obj.pk,
+    ).delete()
+
+
+def set_perm_to_user_list(request, perm, obj):
+    usernames = [username.strip() for username in request.POST[perm].split(',')]
+    with transaction.atomic():
+        bulk_remove_perm(perm, User.objects.all(), obj)
+        if usernames[0]:
+            assign_perm(perm, User.objects.filter(username__in=usernames), obj)
+
+def get_user_list_for_perm(perms, perm):
+    return ', '.join(sorted(
+        user.username for user, permlist in perms.items() if perm in permlist
+    ))
 
 # ---
 
@@ -424,16 +452,20 @@ def dataset_managers(request, dataset_id):
             'dataset': dataset,
             'page': page,
             'new_url': new_url,
+            'managers': get_user_list_for_perm(perms, 'manage_dataset'),
         })
     elif request.method == 'POST':
-        user_id = request.POST["user_id"]
-        manage = request.POST.get("manage")
-        user = User.objects.get(pk=user_id)
-        if manage:
-            if manage == 'False':
-                assign_perm('manage_dataset', user, dataset)
-            else:
-                remove_perm('manage_dataset', user, dataset)
+        if 'manage_dataset' in request.POST:
+            set_perm_to_user_list(request, 'manage_dataset', dataset)
+        else:
+            user_id = request.POST["user_id"]
+            manage = request.POST.get("manage")
+            user = User.objects.get(pk=user_id)
+            if manage:
+                if manage == 'False':
+                    assign_perm('manage_dataset', user, dataset)
+                else:
+                    remove_perm('manage_dataset', user, dataset)
         return redirect('dataset_managers', dataset_id=dataset.id)
 
 @login_required
@@ -517,22 +549,28 @@ def project_users(request, project_id):
             'project': project,
             'page': page,
             'new_url': new_url,
+            'evaluators': get_user_list_for_perm(perms, 'evaluate_project'),
+            'managers': get_user_list_for_perm(perms, 'manage_project'),
         })
     elif request.method == 'POST':
-        user_id = request.POST["user_id"]
-        manage = request.POST.get("manage")
-        evaluate = request.POST.get("evaluate")
-        user = User.objects.get(pk=user_id)
-        if evaluate:
-            if evaluate == 'False':
-                assign_perm('evaluate_project', user, project)
-            else:
-                remove_perm('evaluate_project', user, project)
-        if manage:
-            if manage == 'False':
-                assign_perm('manage_project', user, project)
-            else:
-                remove_perm('manage_project', user, project)
+        if 'evaluate_project' in request.POST:
+            set_perm_to_user_list(request, 'evaluate_project', project)
+            set_perm_to_user_list(request, 'manage_project', project)
+        else:
+            user_id = request.POST["user_id"]
+            manage = request.POST.get("manage")
+            evaluate = request.POST.get("evaluate")
+            user = User.objects.get(pk=user_id)
+            if evaluate:
+                if evaluate == 'False':
+                    assign_perm('evaluate_project', user, project)
+                else:
+                    remove_perm('evaluate_project', user, project)
+            if manage:
+                if manage == 'False':
+                    assign_perm('manage_project', user, project)
+                else:
+                    remove_perm('manage_project', user, project)
         return redirect('project_users', project_id=project.id)
 
 @login_required

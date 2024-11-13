@@ -51,5 +51,15 @@
   </div>
 
   {% include '_paginator.html' %}
+
+  <form method="POST" action="{{ request.path }}" class="mt-5">
+    {% csrf_token %}
+    <div class="mb-3">
+      <label for="manage-dataset-list" class="form-label">Managers</label>
+      <input class="form-control" id="manage-dataset-list" name="manage_dataset" value="{{ managers }}">
+    </div>
+    <button type="submit" class="btn btn-primary">Submit</button>
+  </form>
+
 {% endblock %}
 {# vim: set ft=htmldjango: #}

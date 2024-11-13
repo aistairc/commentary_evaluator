@@ -73,5 +73,19 @@
   </div>
 
   {% include '_paginator.html' %}
+
+  <form method="POST" action="{{ request.path }}" class="mt-5">
+    {% csrf_token %}
+    <div class="mb-3">
+      <label for="evaluate-project-list" class="form-label">Evaluators</label>
+      <input class="form-control" id="evaluate-project-list" name="evaluate_project" value="{{ evaluators }}">
+    </div>
+    <div class="mb-3">
+      <label for="manage-project-list" class="form-label">Managers</label>
+      <input class="form-control" id="manage-project-list" name="manage_project" value="{{ managers }}">
+    </div>
+    <button type="submit" class="btn btn-primary">Submit</button>
+  </form>
+
 {% endblock %}
 {# vim: set ft=htmldjango: #}
