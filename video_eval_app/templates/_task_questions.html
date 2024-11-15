@@ -4,7 +4,7 @@
 <div class="row">
   <div class="col-sm-6 sticky-top">
     <video class="w-100 mb-3" crossorigin="anonymous" controls autoplay>
-      <source type="video/mp4" src="{{ task.segment.file.url }}">
+      <source type="video/mp4" src="{{ task.segment.video.url }}">
       {% if task.segment.subtitles %}
         <track src="{{ task.segment.subtitles.url }}" kind="captions" default>
       {% endif %}

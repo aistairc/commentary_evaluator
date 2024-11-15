@@ -20,6 +20,7 @@ from django.db import transaction
 from django.db.utils import IntegrityError
 from django.db.models import Exists, OuterRef
 from django.utils.safestring import SafeString
+from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.contenttypes.models import ContentType
 from guardian.shortcuts import assign_perm, remove_perm, get_objects_for_user, get_users_with_perms
@@ -34,7 +35,6 @@ from video_evaluation.settings import CREDENTIALS_COOKIE_NAME, MTURK_SANDBOX
 from .models import *
 from .mturk import MTurk, make_aws_session
 from .utils import convert_answers, load_subtitles
-from .storage import StoredFile
 
 
 Invitation = get_invitation_model()
@@ -50,6 +50,7 @@ def get_request_credentials(request):
         raw_credentials = file_credentials.read().decode()
     else:
         raw_credentials = request.POST.get('credentials')
+    ic(raw_credentials)
     if raw_credentials:
         try:
             credentials = json.loads(raw_credentials)
@@ -91,8 +92,8 @@ def upload_video(request, dataset, credentials):
     location = credentials and credentials.pop('Location')
     session = credentials and location and make_aws_session(credentials)
 
-    video_file = StoredFile.save(request.FILES["file"], "video_files", session, location, with_md5=True)
-    audio = StoredFile.save(request.FILES.get("audio"), "audio_files", session, location)
+    video = StoredFile.store(request.FILES["file"], "video_files", session, location)
+    audio = StoredFile.store(request.FILES.get("audio"), "audio_files", session, location)
     if raw_subtitles_file := request.FILES.get('subtitles'):
         with raw_subtitles_file.open('rb') as r:
             raw_subs = r.read()
@@ -102,7 +103,7 @@ def upload_video(request, dataset, credentials):
         subs_file = File(file=BytesIO(subs.content.encode()), name=subs_name)
     else:
         subs_file = None
-    subtitles = StoredFile.save(subs_file, "sub_files", session, location)
+    subtitles = StoredFile.store(subs_file, "subs_files", session, location)
     cuts = request.FILES.get('cuts')
     if cuts:
         with cuts.open('rt') as r:
@@ -110,11 +111,6 @@ def upload_video(request, dataset, credentials):
     else:
         cuts_data = None
 
-    video_md5sum = video_file.pop('md5')
-    video, _ = Video.objects.get_or_create(pk=video_md5sum, defaults = {
-        "file": video_file,
-        # "created_by": request.user, # XXX: move token to UserProfile?
-    })
     name = request.POST.get('name', '') or request.FILES["file"].name
     dataset_video = DatasetVideo.objects.create(
         dataset=dataset,
@@ -329,7 +325,7 @@ def dataset_project(request, dataset_id, project_id=None):
         })
     elif request.method == 'POST':
         if project.is_busy:
-            messages.warning('The project became busy, the operation was not performed. Please try again later.')
+            messages.warning(request, 'The project became busy, the operation was not performed. Please try again later.')
             pass # do nothing, redirect back
         elif request.POST.get('dismiss_messages'):
             project.messages = []
@@ -342,7 +338,7 @@ def dataset_project(request, dataset_id, project_id=None):
         else:
             num_uncut_videos = dataset.dataset_videos.filter(is_cut=False).count()
             if num_uncut_videos:
-                message.warning(f'{num_uncut_videos} video(s) still being processed')
+                messages.warning(request, f'{num_uncut_videos} video(s) still being processed')
                 return redirect('dataset_project', dataset_id=dataset.id, project_id=project.id)
             turk_settings = request.POST["turk_settings"]
             turk_settings = json.loads(request.POST["turk_settings"])
@@ -627,6 +623,13 @@ def project_eval(request, project_id):
     if not evaluate_project_perm:
         return HttpResponse('Forbidden', status=403)
     worker, _created = Worker.objects.get_or_create(user=request.user)
+    ic(str(Task.objects.filter(
+        ~Exists(Assignment.objects.filter(
+            task_id=OuterRef('pk'),
+            worker=worker,
+        )),
+        project=project,
+    ).query))
     task = Task.objects.filter(
         ~Exists(Assignment.objects.filter(
             task_id=OuterRef('pk'),

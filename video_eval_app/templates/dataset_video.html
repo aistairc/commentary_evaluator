@@ -39,7 +39,7 @@
       {% endif %}
     </h4>
     <video crossorigin="anonymous" controls autoplay class="mt-3">
-      <source type="video/mp4" src="{{ dataset_video.video.file.url }}">
+      <source type="video/mp4" src="{{ dataset_video.video.url }}">
       {% if dataset_video.subtitles %}
         <track src="{{ dataset_video.subtitles.url }}" kind="captions" default>
       {% endif %}
@@ -59,7 +59,7 @@
           {% for segment in page %}
             <tr>
               <td>
-                <a href="{% url 'segment' segment.md5sum %}">
+                <a href="{% url 'segment' segment.id %}">
                   {{ segment.start_ts }}
                   &ndash;
                   {{ segment.end_ts|default_if_none:"End" }}

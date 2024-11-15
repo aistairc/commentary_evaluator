@@ -14,10 +14,9 @@ from django.core.files import File
 from django.core.files.storage import default_storage
 from webvtt import WebVTT
 
-from .models import Segment, DatasetVideo, Assignment, Worker
+from .models import Segment, DatasetVideo, Assignment, Worker, StoredFile
 from .utils import secs_to_timestamp, timestamp_to_secs, load_subtitles
 from .mturk import MTurk, make_aws_session, NoSessionError
-from .storage import StoredFile
 
 
 logger = logging.getLogger(__name__)
@@ -31,7 +30,7 @@ def cut_and_delocalize_video(dataset_video, credentials, location):
     cut_dataset_video(dataset_video, session, location)
 
     # save video to storage
-    dataset_video.video.file.delocalize(session, location)
+    dataset_video.video.delocalize(session, location)
     dataset_video.video.save()
     if dataset_video.audio:
         dataset_video.audio.delocalize(session, location)
@@ -118,7 +117,7 @@ def cut_dataset_video(dataset_video, session, location):
                 suffix=".vtt",
                 delete=True,
             )
-            video_path_ctx = dataset_video.video.file.local(session)
+            video_path_ctx = dataset_video.video.local(session)
             audio_path_ctx = dataset_video.audio.local(session)
             with temp_mp4, temp_vtt, video_path_ctx as video_path, audio_path_ctx as audio_path:
                 temp_mp4.close()
@@ -126,16 +125,14 @@ def cut_dataset_video(dataset_video, session, location):
 
                 mp4_file = cut_video(video_path, audio_path, start, end, temp_mp4)
                 seg_subtitles = cut_subtitles(subtitles, start, end, temp_vtt)
-                video_file = StoredFile.save(mp4_file, "video_files", session, location, with_md5=True)
-                md5sum = video_file.pop('md5')
-                subs_file = StoredFile.save(seg_subtitles, "video_files", session, location)
+                video_file = StoredFile.store(mp4_file, "video_files", session, location)
+                subs_file = StoredFile.store(seg_subtitles, "subs_files", session, location)
                 video_file.delocalize(session, location)
                 subs_file.delocalize(session, location)
 
                 segment = Segment.objects.create(
-                    md5sum=md5sum,
                     dataset_video=dataset_video,
-                    file=video_file,
+                    video=video_file,
                     start=start,
                     end=end,
                     subtitles=subs_file,

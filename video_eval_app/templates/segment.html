@@ -11,7 +11,7 @@
   </div>
 
   <video crossorigin="anonymous" controls autoplay class="mt-3">
-    <source type="video/mp4" src="{{ segment.file.url }}">
+    <source type="video/mp4" src="{{ segment.video.url }}">
     {% if segment.subtitles %}
       <track src="{{ segment.subtitles.url }}" kind="captions" default>
     {% endif %}

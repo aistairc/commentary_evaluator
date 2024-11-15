@@ -14,7 +14,8 @@ class UserAdmin(BaseUserAdmin):
 admin.site.unregister(User)
 admin.site.register(User, UserAdmin)
 
-admin.site.register(Video)
+admin.site.register(StoredFile)
+admin.site.register(DatasetVideo)
 admin.site.register(Dataset)
 admin.site.register(Segment)
 admin.site.register(Project)

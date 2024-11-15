@@ -1,5 +1,6 @@
 import uuid
 from functools import partial
+from contextlib import contextmanager
 
 from django.db import models
 from django.conf import settings
@@ -13,7 +14,29 @@ import jsonfield
 
 
 from .utils import secs_to_timestamp
-from .storage import StoredFileField
+from .storage import delocalize_file, store_file, local_file
+
+CONTENT_TYPES = {
+    ".mp4": "video/mp4",
+    ".mp3": "audio/mpeg",
+    ".wav": "audio/wav",
+    ".aac": "audio/aac",
+    ".vtt": "text/vtt",
+    ".csv": "text/csv",
+    ".srt": "text/plain",
+}
+
+
+def md5_sum(file):
+    md5_hash = hashlib.md5()
+    for chunk in file.chunks():
+        md5_hash.update(chunk)
+    h = md5_hash.hexdigest()
+    return h
+
+def md5_file_name(name, h):
+    _, ext = os.path.splitext(name)
+    return os.path.join(h[0], h[1], h + ext.lower())
 
 class Worker(models.Model):
     user = models.OneToOneField(User, on_delete=models.SET_NULL, null=True, related_name="worker")
@@ -22,20 +45,53 @@ class Worker(models.Model):
     def __str__(self):
         return f'pk={self.pk}, user={self.user_id}, turk_worker_pk={self.turk_worker_id}'
 
-class Video(models.Model):
+class StoredFile(models.Model):
     md5sum = models.CharField(max_length=36, primary_key=True)
-    file = StoredFileField()
     created_at = models.DateTimeField(auto_now_add=True)
-    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='videos')
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='stored_files')
+    name = models.CharField(max_length=255)
+    path = models.CharField(max_length=255)
+    bucket = models.CharField(max_length=255, blank=True)
+    key = models.CharField(max_length=255, blank=True)
+
+    @classmethod
+    def store(cls, file, subdir, session=None, location=None):
+        if not file:
+            return None
+
+        name, path, md5sum = store_file(file, subdir, session, location)
+        instance = cls.objects.create(name=name, path=path, md5sum=md5sum)
+        return instance
+
+    def delocalize(self, session, location):
+        if result := delocalize_file(self.path, session, location):
+            self.bucket, self.key = result
+            self.save()
+        return self
+
+    @contextmanager
+    def local(self, session=None):
+        with local_file(self.path, self.bucket, self.key, session) as name:
+            yield name
+
+    @property
+    def url(self):
+        if self.bucket:
+            return f"https://{self.bucket}.s3.amazonaws.com/{self.key}"
+        else:
+            return default_storage.url(self.path)
 
     def __str__(self):
-        return f'pk={self.pk}'
+        s = f'pk={self.pk}, path={self.path}'
+        if self.bucket:
+            s += f" bucket={self.bucket}, key={self.key}"
+        return s
 
 class Dataset(models.Model):
     name = models.CharField(max_length=255)
     token = models.UUIDField(default=uuid.uuid4)
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='datasets')
-    videos = models.ManyToManyField(Video, through='DatasetVideo', related_name='datasets')
+    # videos = models.ManyToManyField(Video, through='DatasetVideo', related_name='datasets')
 
     @property
     def is_cut(self):
@@ -56,10 +112,11 @@ class Dataset(models.Model):
         ]
 
 class DatasetVideo(models.Model):
+    # TODO: rename to Video (also, dataset_videos -> videos)
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name='dataset_videos')
-    video = models.ForeignKey(Video, on_delete=models.CASCADE, related_name='dataset_videos')
-    subtitles = StoredFileField(null=True)
-    audio = StoredFileField(null=True)
+    video = models.ForeignKey(StoredFile, on_delete=models.CASCADE, related_name='dataset_video_videos')
+    subtitles = models.ForeignKey(StoredFile, on_delete=models.SET_NULL, related_name='dataset_video_subtitles', null=True)
+    audio = models.ForeignKey(StoredFile, on_delete=models.SET_NULL, related_name='dataset_video_audios', null=True)
     name = models.CharField(max_length=255)
     cuts = jsonfield.JSONField(default=list, blank=True)
     is_cut = models.BooleanField(default=False)
@@ -76,13 +133,13 @@ class DatasetVideo(models.Model):
 
 
 class Segment(models.Model):
-    md5sum = models.CharField(max_length=36, primary_key=True)
-    file = StoredFileField()
+    # XXX: `video` was `file`
+    video = models.ForeignKey(StoredFile, on_delete=models.CASCADE, related_name='segment_videos')
+    subtitles = models.ForeignKey(StoredFile, on_delete=models.SET_NULL, related_name='segment_subtitles', null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     dataset_video = models.ForeignKey(DatasetVideo, on_delete=models.CASCADE, related_name='segments')
     start = models.FloatField()
     end = models.FloatField(null=True)
-    subtitles = StoredFileField(null=True)
 
     @property
     def start_ts(self):
