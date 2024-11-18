@@ -153,7 +153,14 @@ class Segment(models.Model):
         return f'pk={self.pk}, dataset_video={self.dataset_video_id}, start={self.start}, end={self.end}, subtitles={self.subtitles}'
 
 class Project(models.Model):
+    class WorkerIdentity(models.IntegerChoices):
+        ANONYMOUS = 0, 'Anonymous'
+        NUMBERED = 1, 'Numbered'
+        HASHED = 2, 'Hashed'
+        USERNAME = 3, 'Username'
+
     name = models.CharField(max_length=255)
+    worker_identity = models.IntegerField(choices=WorkerIdentity.choices, default=WorkerIdentity.ANONYMOUS)
     dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name='projects')
     created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='projects')
     questions = jsonfield.JSONField(default=list)

@@ -315,6 +315,7 @@ def dataset_project(request, dataset_id, project_id=None):
             'dataset': dataset,
             'project': project,
             'project_messages': project.messages,
+            'identity_choices': Project.WorkerIdentity.choices,
             'questions': SafeString(json.dumps(project.questions, ensure_ascii=False)),
             'turk_settings': SafeString(json.dumps(project.turk_settings, ensure_ascii=False)),
             'num_uncut_videos': dataset.dataset_videos.filter(is_cut=False).count(), # TODO: disable "Start" button if >0, show an info message
@@ -350,6 +351,7 @@ def dataset_project(request, dataset_id, project_id=None):
                         option["text"] = nh3.clean(option["text"])
             defaults = {
                 "name": request.POST["name"],
+                "worker_identity": request.POST["identity"],
                 "questions": questions,
                 "turk_settings": turk_settings,
             }
@@ -361,7 +363,7 @@ def dataset_project(request, dataset_id, project_id=None):
                 "is_busy": will_run_async_task,
             }
             project, created = Project.objects.update_or_create(
-                id=int(request.POST["id"]),
+                id=project_id,
                 defaults=defaults,
                 create_defaults=create_defaults,
             )

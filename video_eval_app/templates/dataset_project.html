@@ -18,10 +18,16 @@
       </div>
     {% endif %}
 
-    <input type="hidden" name="id" value="{{project.id}}">
     <div class="mb-3">
       <label for="project-name" class="form-label">Name</label>
       <input class="form-control" id="project-name" name="name" value="{{project.name}}" {% if project.is_started %}readonly{% endif %}>
+    </div>
+    <div class="mb-3">
+      <div class="form-label">Worker Identity</div>
+      {% for value, label in identity_choices %}
+        <input type="radio" class="form-check-input" id="identity-{{value}}" name="identity" value="{{value}}" {% if project.worker_identity == value %}checked{% endif %} {% if project.is_started %}disabled{% endif %}>
+        <label for="identity-{{value}}" class="form-check-label me-3">{{label}}</label>
+      {% endfor %}
     </div>
     <div class="mb-3">
       <label for="project-questions" class="form-label">Questions (JSON)</label> <button class="btn btn-primary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#q-example">example</button>
