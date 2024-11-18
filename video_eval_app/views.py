@@ -6,6 +6,8 @@ import json
 from datetime import datetime
 from io import BytesIO
 import os
+import hashlib
+import random
 
 from django.core.files import File
 from django.conf import settings
@@ -18,7 +20,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_safe
 from django.db import transaction
 from django.db.utils import IntegrityError
-from django.db.models import Exists, OuterRef
+from django.db.models import Exists, OuterRef, F
 from django.utils.safestring import SafeString
 from django.contrib import messages
 from django.contrib.auth import login
@@ -147,6 +149,9 @@ def get_user_list_for_perm(perms, perm):
     return ', '.join(sorted(
         user.username for user, permlist in perms.items() if perm in permlist
     ))
+
+def secure_hash(input):
+    return hashlib.sha256(input.encode()).hexdigest()
 
 # ---
 
@@ -672,6 +677,14 @@ def project_results(request, project_id):
     assignments = Assignment.objects.filter(
         task__project_id=project_id, is_approved=True,
     )
+    identity = project.worker_identity
+    anonymous = identity == Project.WorkerIdentity.ANONYMOUS
+    if not anonymous:
+        ic("ANNOTATING")
+        assignments = assignments.annotate(
+            username=F('worker__user__username'),
+            turk_worker_id=F('worker__turk_worker_id'),
+        )
     results = {
         "project": project.name,
         "tasks": {
@@ -679,13 +692,30 @@ def project_results(request, project_id):
                 "name": task.segment.dataset_video.name,
                 "start": task.segment.start,
                 "end": task.segment.end,
-                "evaluations": [],
+                "evaluations": [] if anonymous else {},
             }
             for task in tasks
         },
     }
+    if not anonymous:
+        workers = {
+            assignment.worker_id: assignment.username or f"TURK:{assignment.turk_worker_id}"
+            for assignment in assignments
+        }
+        worker_ids = list(workers)
+        random.shuffle(worker_ids)
+        for ix, worker_id in enumerate(worker_ids):
+            if identity == Project.WorkerIdentity.NUMBERED:
+                workers[worker_id] = ix
+            elif identity == Project.WorkerIdentity.HASHED:
+                workers[worker_id] = secure_hash(f"WORKER:{worker_id}:{settings.SECRET_KEY}")
     for assignment in assignments:
-        results["tasks"][assignment.task_id]["evaluations"].append(assignment.result)
+        evaluations = results["tasks"][assignment.task_id]["evaluations"]
+        if anonymous:
+            evaluations.append(assignment.result)
+        else:
+            evaluations[workers[assignment.worker_id]] = assignment.result
+
     results["tasks"] = list(results["tasks"].values())
     return HttpResponse(
         json.dumps(results, ensure_ascii=False),

@@ -1,4 +1,4 @@
-textarea:not([readonly]), input:not([readonly]) {
+textarea:not([readonly]), input:not([readonly], [type="check"], [type="radio"]) {
   background-color: #eeeeee !important;
 }
 
