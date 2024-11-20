@@ -38,12 +38,20 @@ def md5_file_name(name, h):
     _, ext = os.path.splitext(name)
     return os.path.join(h[0], h[1], h + ext.lower())
 
+
+
 class Worker(models.Model):
     user = models.OneToOneField(User, on_delete=models.SET_NULL, null=True, related_name="worker")
     turk_worker_id = models.CharField(max_length=255, blank=True)
 
     def __str__(self):
-        return f'pk={self.pk}, user={self.user_id}, turk_worker_pk={self.turk_worker_id}'
+        if self.user:
+            return self.user.username
+        if self.turk_worker_id:
+            return self.turk_worker_id
+
+    def __repr__(self):
+        return f'<Worker #{self.pk}: {self}>'
 
 class StoredFile(models.Model):
     md5sum = models.CharField(max_length=36, primary_key=True)
@@ -82,10 +90,13 @@ class StoredFile(models.Model):
             return default_storage.url(self.path)
 
     def __str__(self):
+        return self.path
+
+    def __repr__(self):
         s = f'pk={self.pk}, path={self.path}'
         if self.bucket:
             s += f" bucket={self.bucket}, key={self.key}"
-        return s
+        return f'<StoredFile: {s}>'
 
 class Dataset(models.Model):
     name = models.CharField(max_length=255)
@@ -101,7 +112,10 @@ class Dataset(models.Model):
         self.token = uuid.uuid4()
 
     def __str__(self):
-        return f'pk={self.pk}, name={self.name}'
+        return self.name
+
+    def __repr__(self):
+        return f'<Dataset #{self.pk}: {self.name}>'
 
     class Meta:
         permissions = (
@@ -122,7 +136,10 @@ class DatasetVideo(models.Model):
     is_cut = models.BooleanField(default=False)
 
     def __str__(self):
-        return f'pk={self.pk}, dataset={self.dataset_id}, name={self.name}, video={self.video_id}, audio={self.audio}, subtitles={self.subtitles}, cuts={self.cuts}, is_cut={self.is_cut}'
+        return self.name
+
+    def __repr__(self):
+        return f'<DatasetVideo #{self.pk}: {self.name}>'
 
     class Meta:
         unique_together = [['dataset', 'video']]
@@ -133,7 +150,6 @@ class DatasetVideo(models.Model):
 
 
 class Segment(models.Model):
-    # XXX: `video` was `file`
     video = models.ForeignKey(StoredFile, on_delete=models.CASCADE, related_name='segment_videos')
     subtitles = models.ForeignKey(StoredFile, on_delete=models.SET_NULL, related_name='segment_subtitles', null=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -149,8 +165,11 @@ class Segment(models.Model):
     def end_ts(self):
         return secs_to_timestamp(self.end)
 
+    def __repr__(self):
+        return f'<Segment #{self.pk}>'
+
     def __str__(self):
-        return f'pk={self.pk}, dataset_video={self.dataset_video_id}, start={self.start}, end={self.end}, subtitles={self.subtitles}'
+        return f'{self.dataset_video.name} ({self.start_ts} - {self.end_ts})'
 
 class Project(models.Model):
     class WorkerIdentity(models.IntegerChoices):
@@ -170,8 +189,11 @@ class Project(models.Model):
     is_busy = models.BooleanField(default=False)
     messages = jsonfield.JSONField(default=list)
 
+    def __repr__(self):
+        return f'<Project #{self.pk}: {self.name}>'
+
     def __str__(self):
-        return f'pk={self.pk}, dataset={self.dataset_id}'
+        return self.name
 
     class Meta:
         permissions = (
@@ -188,8 +210,11 @@ class Task(models.Model):
     collected_at = models.DateTimeField(null=True)
     results = jsonfield.JSONField(null=True)
 
+    def __repr__(self):
+        return f'<Task #{self.pk}>'
+
     def __str__(self):
-        return f'pk={self.pk}, project={self.project_id}, segment={self.segment_id}, turk_hit_id={self.turk_hit_id}, results={self.results}'
+        return str(self.segment)
 
 class Assignment(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -200,8 +225,11 @@ class Assignment(models.Model):
     result = jsonfield.JSONField(null=True)
     feedback = models.CharField(max_length=255)
 
+    def __repr__(self):
+        return f'<Assignment #{self.pk}>'
+
     def __str__(self):
-        return f'pk={self.pk}, task={self.task_id}, worker={self.worker_id}, turk_assignment_id={self.turk_assignment_id}, is_approved={self.is_approved}'
+        return f'{self.task} by {self.worker}'
 
 
 
