@@ -665,6 +665,17 @@ def task_eval_submit(request, task_id):
 
 @login_required
 @require_safe
+def project_external(request, project_id):
+    project = Project.objects.get(pk=project_id)
+    if not request.user.has_perm('video_eval_app.manage_project', project):
+        return HttpResponse('Forbidden', status=403)
+    return render(request, 'project_external.html', {
+        'dataset': project.dataset,
+        'project': project,
+    })
+
+@login_required
+@require_safe
 def project_results(request, project_id):
     project = Project.objects.get(pk=project_id)
     if not request.user.has_perm('video_eval_app.manage_project', project):
@@ -811,6 +822,7 @@ def credentials(request):
             expires=expiration, httponly=True,
         )
         return response
+
 
 
 

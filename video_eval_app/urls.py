@@ -26,6 +26,7 @@ urlpatterns = [
     path("assignments/<int:assignment_id>", views.assignment, name="assignment"),
     path("datasets/<str:dataset_id>/invite", views.invite_user, name="dataset_invite"),
     path("projects/<str:project_id>/invite", views.invite_user, name="project_invite"),
+    path("projects/<str:project_id>/external", views.project_external, name="project_external"),
     path("invitations/accept-invite/<str:key>", views.accept_invite, name="accept-invite"),
 
     path("upload_video/<uuid:token>", views.upload_video_api, name="upload_video_api"),
