@@ -7,6 +7,7 @@ import copy
 
 from django.conf import settings
 from django.template.loader import render_to_string
+from django.apps import apps
 from schema import Schema, And, Or, Use, Optional, SchemaError
 import boto3
 import xmltodict
@@ -15,6 +16,7 @@ from .utils import convert_answers
 
 
 _title_case_re = re.compile(r'(?<!^)(?=[A-Z])')
+
 
 
 class NoSessionError(Exception): pass
@@ -129,24 +131,27 @@ class MTurk:
         hit_type_id = response['HITTypeId']
         return hit_type_id
 
-    def create_hit(self, task, hit_type_id, lifetime_in_seconds, max_assignments):
+    def create_hit(self, task, project, hit_type_id, lifetime_in_seconds, max_assignments):
+        task_id = task["task_id"]
         question = render_to_string('mturk_question.html', {
-            "task": task,
+            "project": project,
+            **task,
         })
         safe_question = question.replace(']]>', ']]]]><![CDATA[>')
         html_question = f'<HTMLQuestion xmlns="http://mechanicalturk.amazonaws.com/AWSMechanicalTurkDataSchemas/2011-11-11/HTMLQuestion.xsd"><HTMLContent><![CDATA[{safe_question}]]></HTMLContent><FrameHeight>0</FrameHeight></HTMLQuestion>'
-        unique_request_token = f'{settings.UNIQUE_ID}-p{task.project_id}-t{task.id}'
+        unique_request_token = f'{settings.UNIQUE_ID}-p{project.id}-t{task_id}'
         response = self.client.create_hit_with_hit_type(
             HITTypeId=hit_type_id,
             MaxAssignments=max_assignments,
             LifetimeInSeconds=lifetime_in_seconds,
             Question=html_question,
-            RequesterAnnotation=str(task.id),
+            RequesterAnnotation=str(task_id),
             UniqueRequestToken=unique_request_token,
             # UniqueRequestToken
         )
         hit_id = response['HIT']['HITId']
-        type(task).objects.filter(pk=task.id).update(turk_hit_id=hit_id)
+        Task = apps.get_model('video_eval_app', 'Task')
+        Task.objects.filter(pk=task_id).update(turk_hit_id=hit_id)
         hit_group_id = response['HIT']['HITGroupId']
         return hit_group_id
 
@@ -172,7 +177,7 @@ class MTurk:
         return assignments
 
 
-    def create_hits(self, project, messages):
+    def create_hits(self, project, tasks, messages):
         settings = copy.deepcopy(project.turk_settings)
         lifetime_in_seconds = settings.pop('LifetimeInSeconds')
         max_assignments = settings.pop('MaxAssignments')
@@ -180,11 +185,10 @@ class MTurk:
         hit_type_id = self.create_hit_type(settings)
 
         try:
-            tasks = project.tasks.prefetch_related('segment', 'project').all()
             hit_group_id = None
             for task in tasks:
                 try:
-                    hit_group_id = self.create_hit(task, hit_type_id, lifetime_in_seconds, max_assignments)
+                    hit_group_id = self.create_hit(task, project, hit_type_id, lifetime_in_seconds, max_assignments)
                 except Exception as x:
                     messages.append(['error', str(x)])
         except Exception as x:
@@ -194,27 +198,3 @@ class MTurk:
     def get_account_balance(self):
         balance = self.client.get_account_balance()['AvailableBalance']
         return balance
-        
-
-if __name__ == '__main__':
-    import os, django
-    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "video_evaluation.settings")
-    django.setup()
-
-    from icecream import ic
-    from .models import Project
-    mturk = MTurk()
-    mturk.connect()
-    p = Project.objects.last()
-    import sys; sys.exit()
-
-    class MockRequest:
-        POST = {
-            'mturk_credentials': os.environ.get('MTURK_CREDENTIALS'),
-        }
-    # mturk = MTurk(MockRequest())
-    from .models import *
-    project = Project.objects.first()
-    mturk = MTurk()
-    mturk.connect()
-    mturk.create_hits(project)

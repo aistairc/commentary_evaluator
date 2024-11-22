@@ -105,7 +105,6 @@ class AssignmentInline(admin.TabularInline):
         return readonly_fields
 
     def project(self, obj):
-        ic(obj.task.project)
         if obj.task and obj.task.project:
             admin_url = reverse('admin:%s_%s_change' % (
                 obj.task.project._meta.app_label, 

@@ -1,12 +1,13 @@
-{# params: task #}
+{# params: task_id, project, video_url, subtitles_url #}
 {% load lookup %}
+{% load absolute_url %}
 
 <div class="row">
   <div class="col-sm-6 sticky-top">
     <video class="w-100 mb-3" crossorigin="anonymous" controls autoplay>
-      <source type="video/mp4" src="{{ task.segment.video.url }}">
-      {% if task.segment.subtitles %}
-        <track src="{{ task.segment.subtitles.url }}" kind="captions" default>
+      <source type="video/mp4" src="{{ video_url }}">
+      {% if subtitles_url %}
+        <track src="{{ subtitles_url }}" kind="captions" default>
       {% endif %}
     </video>
 
@@ -33,7 +34,10 @@
   </div>
 
   <div class="col-sm-6">
-    {% for question in task.project.questions %}
+    {% if task_id %}
+      <input type="hidden" name="task_id" value="{{task_id}}">
+    {% endif %}
+    {% for question in project.questions %}
       {% with answer=assignment.result|lookup:question.id %}
         <fieldset class="form-group mb-3">
           <div>
@@ -54,8 +58,6 @@
         </fieldset>
       {% endwith %}
     {% endfor %}
-  </div>
-  <div style="height: 10000px; bg-color: red;">
   </div>
 </div>
 

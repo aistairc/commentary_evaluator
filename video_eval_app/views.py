@@ -4,11 +4,13 @@ from django.contrib.admin.options import messages
 
 import json
 from datetime import datetime
-from io import BytesIO
+from io import BytesIO, StringIO
 import os
 import hashlib
 import random
+import csv
 
+from django.template.loader import render_to_string
 from django.core.files import File
 from django.conf import settings
 from django.shortcuts import HttpResponseRedirect, render, redirect
@@ -52,7 +54,6 @@ def get_request_credentials(request):
         raw_credentials = file_credentials.read().decode()
     else:
         raw_credentials = request.POST.get('credentials')
-    ic(raw_credentials)
     if raw_credentials:
         try:
             credentials = json.loads(raw_credentials)
@@ -375,11 +376,11 @@ def dataset_project(request, dataset_id, project_id=None):
             if created:
                 assign_perm('manage_project', request.user, project)
             if request.POST.get('start'):
-                if turk_settings:
+                if will_run_async_task:
                     # get MTurk client and check if it works
                     mturk = MTurk()
+                    mturk.connect(request.credentials)
                     if mturk.client:
-                        mturk.connect(request.credentials)
                         mturk.get_account_balance()
 
                 project.is_started = True
@@ -392,9 +393,18 @@ def dataset_project(request, dataset_id, project_id=None):
                 Task.objects.bulk_create(tasks)
 
                 if mturk.client:
+                    tasks = project.tasks.prefetch_related('segment', 'project').all()
+                    task_list = [
+                        {
+                            "task_id": task.id,
+                            "video_url": task.segment.video.absolute_url(request),
+                            "subtitles_url": task.segment.subtitles.absolute_url(request),
+                        }
+                        for task in tasks
+                    ]
                     async_task(
                         'video_eval_app.tasks.post_project_to_mturk',
-                        project, request.credentials,
+                        project, task_list, request.credentials
                     )
         return redirect('dataset_project', dataset_id=dataset.id, project_id=project.id)
 
@@ -524,7 +534,9 @@ def assignment(request, assignment_id):
         return render(request, 'assignment.html', {
             'dataset': assignment.task.project.dataset,
             'project': assignment.task.project,
-            'task': assignment.task,
+            'task_id': assignment.task.id,
+            'video_url': assignment.task.segment.video.absolute_url(request),
+            'subtitles_url': assignment.task.segment.subtitles.absolute_url(request),
             'assignment': assignment,
         })
 
@@ -630,13 +642,6 @@ def project_eval(request, project_id):
     if not evaluate_project_perm:
         return HttpResponse('Forbidden', status=403)
     worker, _created = Worker.objects.get_or_create(user=request.user)
-    ic(str(Task.objects.filter(
-        ~Exists(Assignment.objects.filter(
-            task_id=OuterRef('pk'),
-            worker=worker,
-        )),
-        project=project,
-    ).query))
     task = Task.objects.filter(
         ~Exists(Assignment.objects.filter(
             task_id=OuterRef('pk'),
@@ -648,8 +653,10 @@ def project_eval(request, project_id):
         'dataset': project.dataset,
         'project': project,
         'evaluate': True,
-        'task': task,
         'dataset_video': task and task.segment.dataset_video,
+        'task_id': task and task.id,
+        'video_url': task and task.segment.video.url,
+        'subtitles_url': task and task.segment.subtitles.url,
     })
 
 @require_POST
@@ -672,7 +679,62 @@ def project_external(request, project_id):
     return render(request, 'project_external.html', {
         'dataset': project.dataset,
         'project': project,
+        'list_formats': settings.EXTERNAL_LIST_FORMATS,
+        'var_formats': settings.EXTERNAL_VAR_FORMATS,
     })
+
+@login_required
+@require_safe
+def external_template(request, project_id):
+    project = Project.objects.get(pk=project_id)
+    if not request.user.has_perm('video_eval_app.manage_project', project):
+        return HttpResponse('Forbidden', status=403)
+    var_format_id = request.GET["var-format"]
+    var_format_obj = settings.EXTERNAL_VAR_FORMATS[var_format_id]
+    var_format = var_format_obj.get('form')
+    if not var_format:
+        var_format = var_format_obj['name'].replace('var', '%s')
+    subtitles_url_var = var_format % 'subtitlesUrl'
+    video_url_var = var_format % 'videoUrl'
+    task_var = var_format % 'task'
+    question = render_to_string('external_question.html', {
+        "project": project,
+        "task_id": task_var,
+        "video_url": video_url_var,
+        "subtitles_url": subtitles_url_var,
+    })
+    response = HttpResponse(question, content_type='text/plain')
+    response['Content-Disposition'] = 'inline; filename="template.txt"'
+    return response
+
+@login_required
+@require_safe
+def external_datalist(request, project_id):
+    project = Project.objects.get(pk=project_id)
+    if not request.user.has_perm('video_eval_app.manage_project', project):
+        return HttpResponse('Forbidden', status=403)
+    list_format_id = request.GET["list-format"]
+    list_format_obj = settings.EXTERNAL_LIST_FORMATS[list_format_id]
+    list_format_opts = list_format_obj.get('opts', {})
+    list_format_ext = list_format_obj.get('ext', 'txt')
+    list_format_mime = list_format_obj.get('mime', 'text/plain') # because Chrome >.<
+    data = [
+        {
+            "taskId": task.id,
+            "videoUrl": task.segment.video.absolute_url(request),
+            "subtitlesUrl": task.segment.subtitles.absolute_url(request),
+        }
+        for task in project.tasks.all()
+    ]
+    output = StringIO()
+    writer = csv.DictWriter(output, fieldnames=("taskId", "videoUrl", "subtitlesUrl"), **list_format_opts)
+    writer.writeheader()
+    writer.writerows(data)
+    response = HttpResponse(output.getvalue(), content_type='text/plain')
+    response['Content-Disposition'] = f'inline; filename="datalist.{list_format_ext}"'
+    response['Content-Type'] = list_format_mime
+    return response
+
 
 @login_required
 @require_safe
@@ -691,7 +753,6 @@ def project_results(request, project_id):
     identity = project.worker_identity
     anonymous = identity == Project.WorkerIdentity.ANONYMOUS
     if not anonymous:
-        ic("ANNOTATING")
         assignments = assignments.annotate(
             username=F('worker__user__username'),
             turk_worker_id=F('worker__turk_worker_id'),

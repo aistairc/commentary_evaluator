@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
 {% block content %}
-  {% if task %}
-    <form method="POST" action="{% url 'task_eval_submit' task.id %}">
+  {% if task_id %}
+    <form method="POST" action="{% url 'task_eval_submit' task_id %}">
       {% csrf_token %}
       {% include '_task_questions.html' %}
     </form>

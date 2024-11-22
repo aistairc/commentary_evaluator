@@ -96,6 +96,9 @@
                                   <a href="{% url 'dataset_project' project.dataset.id project.id %}" class="nav-link {% if request.current_url_name == 'dataset_project' %}active{% endif %}">Properties</a>
                                 </li>
                                 <li class="nav-item">
+                                  <a href="{% url 'project_external' project.id %}" class="nav-link {% if request.current_url_name == 'dataset_external' %}active{% endif %}">External</a>
+                                </li>
+                                <li class="nav-item">
                                   <a href="{% url 'project_approvals' project.id %}" class="nav-link {% if request.current_url_name == 'project_approvals' %}active{% endif %}">Approvals</a>
                                 </li>
                                 <li class="nav-item">

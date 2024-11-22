@@ -89,6 +89,12 @@ class StoredFile(models.Model):
         else:
             return default_storage.url(self.path)
 
+    def absolute_url(self, request):
+        if self.bucket:
+            return self.url
+        else:
+            return request.build_absolute_uri(self.url)
+
     def __str__(self):
         return self.path
 

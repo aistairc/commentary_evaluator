@@ -153,6 +153,19 @@ MESSAGE_TAGS = {
 MEDIA_ROOT = BASE_DIR / 'media'
 MEDIA_URL = '/media/'
 
+EXTERNAL_LIST_FORMATS = {
+    # 'tsv': { 'name': 'TSV', 'ext': 'tsv', 'mime': 'text/tab-separated-values', 'opts': { 'dialect': 'excel-tab' } },
+    'csv': { 'name': 'CSV', 'opts': { 'dialect': 'excel' }, 'default': True },
+    'tsv': { 'name': 'TSV', 'opts': { 'dialect': 'excel-tab' } },
+}
+    
+EXTERNAL_VAR_FORMATS = {
+    # e.g.: 'jinja': { 'name': 'jinja', 'form': '{{var}}' },
+    'dollar_curly': { 'name': '${var}', 'default': True },
+    'dollar_curlies': { 'name': '${{var}}' },
+    'curlies': { 'name': '{{var}}' },
+}
+
 INVITATIONS_INVITATION_MODEL = 'video_eval_app.Invitation'
 
 Q_CLUSTER = {

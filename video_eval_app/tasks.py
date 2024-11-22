@@ -139,23 +139,23 @@ def cut_dataset_video(dataset_video, session, location):
                 )
 
 
-def post_project_to_mturk(project, turk_credentials):
+def post_project_to_mturk(project, tasks, turk_credentials):
     messages = []
     is_started = True
     turk_hit_group_id = None
     try:
         mturk = MTurk()
         mturk.connect(turk_credentials)
-        turk_hit_group_id = mturk.create_hits(project, messages)
-    except Exception as x:
-        ic(x)
+        turk_hit_group_id = mturk.create_hits(project, tasks, messages)
+    # except Exception as x:
+    except NotImplementedError as x:
+        ic(str(x))
         messages.append(['error', str(x)])
         is_started = False
     finally:
-        turk_hit_group_id = { 'turk_hit_group_id': turk_hit_group_id } if turk_hit_group_id else {}
         type(project).objects.filter(pk=project.id).update(
             is_busy=False, is_started=is_started,
-            messages=messages, **turk_hit_group_id,
+            messages=messages, turk_hit_group_id=turk_hit_group_id or '',
         )
 
 

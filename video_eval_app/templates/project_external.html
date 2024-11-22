@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h2>External</h1>
+
+  <form action="{% url 'external_datalist' project.id %}">
+    {% csrf_token %}
+
+    <div class="mb-3">
+      <div class="form-label">Task list format</div>
+      {% for id, format in list_formats.items %}
+        <div class="form-check form-check-inline">
+          <input type="radio" class="form-check-input" id="list-format-{{id}}" name="list-format" value="{{id}}" {% if format.default %}checked{% endif %}>
+          <label for="list-format-{{id}}" class="form-check-label">{{format.name}}</label>
+        </div>
+      {% endfor %}
+      <button type="submit" class="btn btn-primary" name="get-list">Task List</button>
+    </div>
+  </form>
+  <form action="{% url 'external_template' project.id %}">
+    <div class="mb-3">
+      <div class="form-label">Template variable format</div>
+      {% for id, format in var_formats.items %}
+        <div class="form-check form-check-inline">
+          <input type="radio" class="form-check-input" id="var-format-{{id}}" name="var-format" value="{{id}}" {% if format.default %}checked{% endif %}>
+          <label for="var-format-{{id}}" class="form-check-label"><code>{{format.name}}</code></label>
+        </div>
+      {% endfor %}
+      <button type="submit" class="btn btn-primary" name="get-template">Template</button>
+    </div>
+  </form>
+{% endblock %}
+
+{# vim: set ft=htmldjango: #}
