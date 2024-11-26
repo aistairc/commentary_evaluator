@@ -65,7 +65,7 @@ def delocalize_file(path, session, location):
     if not os.path.exists(real_path):
         return None
 
-    _, ext = os.path.splitext(path, location)
+    _, ext = os.path.splitext(path)
     content_type = CONTENT_TYPES.get(ext)
 
     bucket, dir_key = location.split('/', 1)

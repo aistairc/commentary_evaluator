@@ -149,10 +149,10 @@ def post_project_to_mturk(project, tasks, turk_credentials):
         turk_hit_group_id = mturk.create_hits(project, tasks, messages)
     # except Exception as x:
     except NotImplementedError as x:
-        ic(str(x))
         messages.append(['error', str(x)])
         is_started = False
     finally:
+        ic(turk_hit_group_id)
         type(project).objects.filter(pk=project.id).update(
             is_busy=False, is_started=is_started,
             messages=messages, turk_hit_group_id=turk_hit_group_id or '',
@@ -166,21 +166,28 @@ def get_assignments_from_mturk(project, turk_credentials):
         mturk.connect(turk_credentials)
         tasks = project.tasks.exclude(turk_hit_id='').prefetch_related('assignments')
         for task in tasks:
+            ic(task)
             turk_assignments = mturk.get_assignments(task.turk_hit_id, project.questions)
+            ic(turk_assignments)
             for turk_assignment_id, turk_assignment in turk_assignments.items():
                 worker, _created = Worker.objects.get_or_create(worker_id=turk_assignment['worker_id'], service="MTurk")
+                ic(worker)
                 defaults = {
                     "worker": worker,
                     "is_approved": turk_assignment['is_approved'],
                     "result": turk_assignment['result'],
                 }
-                Assignment.objects.update_or_create(
+                assignment = Assignment.objects.update_or_create(
                     task=task, turk_assignment_id=turk_assignment_id,
                     defaults=defaults,
                 )
+                ic(assignment)
+        ic("done")
     except Exception as x:
+        ic("error", str(x))
         messages.append(['error', str(x)])
     finally:
+        ic("finally")
         type(project).objects.filter(pk=project.id).update(
             is_busy=False, messages=messages,
         )

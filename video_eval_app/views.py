@@ -684,7 +684,11 @@ def project_external(request, project_id):
             'var_formats': settings.EXTERNAL_VAR_FORMATS,
         })
     elif request.method == 'POST':
-        byte_contents = request.FILES['results'].read()
+        results_file = request.FILES.get('results')
+        if not results_file:
+            messages.error(request, 'No results file was submitted')
+            return redirect(request.path_info)
+        byte_contents = results_file.read()
         encoding = chardet.detect(byte_contents)['encoding'] 
         text_contents = byte_contents.decode(encoding)
         sniffer = csv.Sniffer()
@@ -721,7 +725,7 @@ def project_external(request, project_id):
                 worker=worker,
                 defaults={
                     "result": results,
-                    "is_approved": False,
+                    "is_approved": None,
                 }
             )
         return redirect('project_approvals', project_id=project.id)
@@ -795,11 +799,11 @@ def project_results(request, project_id):
     )
     identity = project.worker_identity
     anonymous = identity == Project.WorkerIdentity.ANONYMOUS
-    if not anonymous:
-        assignments = assignments.annotate(
-            username=F('worker__user__username'),
-            worker_id=F('worker__worker_id'),
-        )
+    # if not anonymous:
+    #     assignments = assignments.annotate(
+    #         username=F('worker__user__username'),
+    #         resolved_worker_id=F('worker__worker_id'),
+    #     )
     results = {
         "project": project.name,
         "tasks": {
@@ -814,7 +818,8 @@ def project_results(request, project_id):
     }
     if not anonymous:
         workers = {
-            assignment.worker_id: assignment.username or f"TURK:{assignment.worker_id}"
+            # assignment.worker_id: assignment.username or f"TURK:{assignment.resolved_worker_id}"
+            assignment.worker_id: str(assignment.worker)
             for assignment in assignments
         }
         worker_ids = list(workers)
