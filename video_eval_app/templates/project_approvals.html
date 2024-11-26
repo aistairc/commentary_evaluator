@@ -25,11 +25,7 @@
             <td><a href="{% url 'assignment' assignment.id %}">{{segment.start_ts}} &ndash; {{segment.end_ts}}</a></td>
             <td>{{ assignment.worker_id }}</td>
             <td>
-              {% if assignment.turk_assignment_id %}
-                MTurk
-              {% else %}
-                Local
-              {% endif %}
+              {{ assignment.worker.service | default:"Local" }}
             </td>
             <td>
               {% if assignment.is_approved is None %}

@@ -1,5 +1,5 @@
-textarea:not([readonly]), input:not([readonly], [type="check"], [type="radio"]) {
-  background-color: #eeeeee !important;
+textarea[readonly], input[readonly] {
+  background-color: #dddddd !important;
 }
 
 .nav-pills .nav-link.active a, .nav-pills .show>.nav-link a {

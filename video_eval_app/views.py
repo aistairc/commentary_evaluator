@@ -31,6 +31,7 @@ from guardian.shortcuts import assign_perm, remove_perm, get_objects_for_user, g
 from invitations.utils import get_invitation_model
 import botocore
 import nh3
+import chardet
 from guardian.models import UserObjectPermission
 
 
@@ -671,17 +672,59 @@ def task_eval_submit(request, task_id):
     return redirect('project_eval', project_id=task.project.id)
 
 @login_required
-@require_safe
 def project_external(request, project_id):
     project = Project.objects.get(pk=project_id)
     if not request.user.has_perm('video_eval_app.manage_project', project):
         return HttpResponse('Forbidden', status=403)
-    return render(request, 'project_external.html', {
-        'dataset': project.dataset,
-        'project': project,
-        'list_formats': settings.EXTERNAL_LIST_FORMATS,
-        'var_formats': settings.EXTERNAL_VAR_FORMATS,
-    })
+    if request.method in {'GET', 'HEAD'}:
+        return render(request, 'project_external.html', {
+            'dataset': project.dataset,
+            'project': project,
+            'list_formats': settings.EXTERNAL_LIST_FORMATS,
+            'var_formats': settings.EXTERNAL_VAR_FORMATS,
+        })
+    elif request.method == 'POST':
+        byte_contents = request.FILES['results'].read()
+        encoding = chardet.detect(byte_contents)['encoding'] 
+        text_contents = byte_contents.decode(encoding)
+        sniffer = csv.Sniffer()
+        has_headers = sniffer.has_header(text_contents)
+        if not has_headers:
+            messages.error(request, 'The uploaded CSV/TSV file does not have a header')
+            return redirect(request.path_info)
+        dialect = sniffer.sniff(text_contents)
+        csv_reader = csv.DictReader(StringIO(text_contents), dialect=dialect)
+        worker_id_field = next(
+            (
+                fieldname
+                for fieldname in settings.EXTERNAL_WORKER_ID_FIELD.keys()
+                if fieldname in csv_reader.fieldnames
+            ),
+            None
+        )
+        service = settings.EXTERNAL_WORKER_ID_FIELD.get(worker_id_field, '')
+        if not worker_id_field:
+            messages.error(request, 'The uploaded CSV/TSV file does not have an identifiable worker ID field')
+            return redirect(request.path_info)
+        if 'task_id' not in csv_reader.fieldnames:
+            messages.error(request, 'The uploaded CSV/TSV file does not have an identifiable worker ID field')
+            return redirect(request.path_info)
+        for row in csv_reader:
+            worker_id = row[worker_id_field]
+            task_id = row['task_id']
+            results = convert_answers(project.questions, turk_answers=row)
+            worker, _ = Worker.objects.get_or_create(
+                worker_id=worker_id, service=service
+            )
+            assignment, _ = Assignment.objects.update_or_create(
+                task_id=task_id,
+                worker=worker,
+                defaults={
+                    "result": results,
+                    "is_approved": False,
+                }
+            )
+        return redirect('project_approvals', project_id=project.id)
 
 @login_required
 @require_safe
@@ -755,7 +798,7 @@ def project_results(request, project_id):
     if not anonymous:
         assignments = assignments.annotate(
             username=F('worker__user__username'),
-            turk_worker_id=F('worker__turk_worker_id'),
+            worker_id=F('worker__worker_id'),
         )
     results = {
         "project": project.name,
@@ -771,7 +814,7 @@ def project_results(request, project_id):
     }
     if not anonymous:
         workers = {
-            assignment.worker_id: assignment.username or f"TURK:{assignment.turk_worker_id}"
+            assignment.worker_id: assignment.username or f"TURK:{assignment.worker_id}"
             for assignment in assignments
         }
         worker_ids = list(workers)

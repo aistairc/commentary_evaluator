@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <h2>External</h1>
+  <h2>External</h2>
 
   <form action="{% url 'external_datalist' project.id %}">
     {% csrf_token %}
@@ -27,6 +27,20 @@
         </div>
       {% endfor %}
       <button type="submit" class="btn btn-primary" name="get-template">Template</button>
+    </div>
+  </form>
+  <form method="POST" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="mb-3">
+      <label for="results" class="form-label">Upload result file</label>
+      <div class="row">
+        <div class="col-sm-10">
+          <input class="form-control" type="file" id="results" name="results">
+        </div>
+        <div class="col-sm-2">
+          <input type="submit" class="btn btn-primary form-control" value="Upload">
+        </div>
+      </div>
     </div>
   </form>
 {% endblock %}

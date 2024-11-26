@@ -168,7 +168,7 @@ def get_assignments_from_mturk(project, turk_credentials):
         for task in tasks:
             turk_assignments = mturk.get_assignments(task.turk_hit_id, project.questions)
             for turk_assignment_id, turk_assignment in turk_assignments.items():
-                worker, _created = Worker.objects.get_or_create(turk_worker_id=turk_assignment['worker_id'])
+                worker, _created = Worker.objects.get_or_create(worker_id=turk_assignment['worker_id'], service="MTurk")
                 defaults = {
                     "worker": worker,
                     "is_approved": turk_assignment['is_approved'],

@@ -42,13 +42,17 @@ def md5_file_name(name, h):
 
 class Worker(models.Model):
     user = models.OneToOneField(User, on_delete=models.SET_NULL, null=True, related_name="worker")
-    turk_worker_id = models.CharField(max_length=255, blank=True)
+    worker_id = models.CharField(max_length=255, blank=True)
+    service = models.CharField(max_length=255, blank=True)
 
     def __str__(self):
         if self.user:
             return self.user.username
-        if self.turk_worker_id:
-            return self.turk_worker_id
+        if self.worker_id:
+            name = self.worker_id
+            if self.service:
+                name = f"{name}@{self.service}"
+            return name
 
     def __repr__(self):
         return f'<Worker #{self.pk}: {self}>'

@@ -166,6 +166,10 @@ EXTERNAL_VAR_FORMATS = {
     'curlies': { 'name': '{{var}}' },
 }
 
+EXTERNAL_WORKER_ID_FIELD = {
+    'lancersNickname': 'Lancers',
+}
+
 INVITATIONS_INVITATION_MODEL = 'video_eval_app.Invitation'
 
 Q_CLUSTER = {

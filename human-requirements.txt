@@ -12,6 +12,7 @@ schema
 xmltodict
 nh3
 boto3
+chardet
 
 # OPTIONAL
 django-debug-toolbar

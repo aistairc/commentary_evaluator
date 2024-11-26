@@ -15,7 +15,7 @@ class WorkerInline(admin.StackedInline):
     can_delete = False
     extra = 0
     show_change_link = True
-    readonly_fields = ['turk_worker_id']
+    readonly_fields = ['worker_id', 'service']
 
 class StoredFileAdmin(admin.ModelAdmin):
     readonly_fields = ['md5sum', 'created_by', 'path', 'bucket', 'key']
@@ -136,7 +136,7 @@ class AssignmentAdmin(admin.ModelAdmin):
         return False
 
 class WorkerAdmin(admin.ModelAdmin):
-    readonly_fields = ['user', 'turk_worker_id']
+    readonly_fields = ['user', 'worker_id', 'service']
     inlines = [AssignmentInline]
     # can_delete = False
     #
