@@ -1,3 +1,4 @@
+from django.contrib.auth.decorators import sync_to_async
 from icecream import ic # DEBUG:
 
 from hashlib import md5
@@ -7,8 +8,9 @@ from io import BytesIO
 import logging
 import copy
 import os
+from contextlib import nullcontext
 
-import ffmpeg # https://github.com/kkroening/ffmpeg-python
+from ffmpeg.asyncio import FFmpeg # https://github.com/jonghwanhyeon/python-ffmpeg
 from django.conf import settings
 from django.core.files import File
 from django.core.files.storage import default_storage
@@ -16,32 +18,14 @@ from webvtt import WebVTT
 
 from .models import Segment, DatasetVideo, Assignment, Worker, StoredFile
 from .utils import secs_to_timestamp, timestamp_to_secs, load_subtitles
-from .mturk import MTurk, make_aws_session, NoSessionError
+from .mturk import MTurk, make_aws_session
 
 
 logger = logging.getLogger(__name__)
 
 
 
-def cut_and_delocalize_video(dataset_video, credentials, location):
-    session = make_aws_session(credentials) if credentials and location else None
-
-    # cut_video
-    cut_dataset_video(dataset_video, session, location)
-
-    # save video to storage
-    dataset_video.video.delocalize(session, location)
-    dataset_video.video.save()
-    if dataset_video.audio:
-        dataset_video.audio.delocalize(session, location)
-    if dataset_video.subtitles:
-        dataset_video.subtitles.delocalize(session, location)
-    # save dataset video to DB
-    dataset_video.is_cut = True
-    dataset_video.save()
-
-
-def cut_video(video, audio, start, end, temp_mp4):
+async def cut_video(video, audio, start, end, temp_mp4):
     opts = {}
     if end:
         opts['t'] = end - start
@@ -51,13 +35,14 @@ def cut_video(video, audio, start, end, temp_mp4):
     else:
         out_map = ['0']
 
-    vstream = ffmpeg.input(
+    ffmpeg = FFmpeg()
+    ffmpeg = ffmpeg.input(
         video,
         ss=start,
         **opts,
     )
     if audio:
-        astream = ffmpeg.input(
+        ffmpeg = ffmpeg.input(
             audio,
             ss=start,
             **opts,
@@ -66,18 +51,18 @@ def cut_video(video, audio, start, end, temp_mp4):
             "c:v": "copy",
             "c:a": "aac",
         }
-        ostream = ffmpeg.output(
-            vstream['v:0'], astream['a:0'],
+        ffmpeg = ffmpeg.output(
             temp_mp4.name,
+            map=out_map,
             **out_opts,
         )
     else:
-        ostream = ffmpeg.output(
-            vstream,
+        ffmpeg = ffmpeg.output(
             temp_mp4.name,
+            map=out_map,
             c='copy',
         )
-    ostream.run()
+    await ffmpeg.execute()
 
     file_path = Path(temp_mp4.name).relative_to(settings.MEDIA_ROOT)
     file = File(file=open(temp_mp4.name, 'rb'), name="dummy.mp4")
@@ -96,99 +81,112 @@ def cut_subtitles(all_subs, start, end, temp_vtt):
     file = File(file=BytesIO(subs.content.encode()), name="dummy.vtt")
     return file
 
-def cut_dataset_video(dataset_video, session, location):
+async def cut_dataset_video(dataset_video, session, location):
     temp_dir = default_storage.path('tmp')
     os.makedirs(temp_dir, exist_ok=True)
-    dataset_video.segments.all().delete()
-    with dataset_video.subtitles.local(session) as subtitles_path:
+    await dataset_video.segments.all().adelete()
+    subtitles_context = dataset_video.subtitles.local(session) if dataset_video.subtitles else nullcontext()
+    subtitles_path_ctx = dataset_video.subtitles.local(session) if dataset_video.subtitles else nullcontext()
+    async with subtitles_path_ctx as subtitles_path:
         subtitles = load_subtitles(subtitles_path)
-    if dataset_video.cuts:
-        for cut in dataset_video.cuts:
-            start = cut[0]
-            end = cut[1] if len(cut) > 1 else None
+    cuts = dataset_video.cuts or [[0]]
+    for cut in cuts:
+        start = cut[0]
+        end = cut[1] if len(cut) > 1 else None
 
-            temp_mp4 = NamedTemporaryFile(
-                dir=temp_dir,
-                suffix=".mp4",
-                delete=True,
+        temp_mp4 = NamedTemporaryFile(
+            dir=temp_dir,
+            suffix=".mp4",
+            delete=True,
+        )
+        temp_vtt = NamedTemporaryFile(
+            dir=temp_dir,
+            suffix=".vtt",
+            delete=True,
+        )
+        video_path_ctx = dataset_video.video.local(session)
+        audio_path_ctx = dataset_video.audio.local(session) if dataset_video.audio else nullcontext()
+        with temp_mp4, temp_vtt:
+            temp_mp4.close()
+            temp_vtt.close()
+
+            async with video_path_ctx as video_path, audio_path_ctx as audio_path:
+                # TODO: AsyncQueue
+                mp4_file = await cut_video(video_path, audio_path, start, end, temp_mp4)
+            seg_subtitles = cut_subtitles(subtitles, start, end, temp_vtt)
+            video_file = await StoredFile.store(mp4_file, "video_files", session, location)
+            subs_file = await StoredFile.store(seg_subtitles, "subs_files", session, location)
+            await video_file.delocalize(session, location)
+            if subs_file:
+                await subs_file.delocalize(session, location)
+
+            segment = await Segment.objects.acreate(
+                dataset_video=dataset_video,
+                video=video_file,
+                start=start,
+                end=end,
+                subtitles=subs_file,
             )
-            temp_vtt = NamedTemporaryFile(
-                dir=temp_dir,
-                suffix=".vtt",
-                delete=True,
-            )
-            video_path_ctx = dataset_video.video.local(session)
-            audio_path_ctx = dataset_video.audio.local(session)
-            with temp_mp4, temp_vtt, video_path_ctx as video_path, audio_path_ctx as audio_path:
-                temp_mp4.close()
-                temp_vtt.close()
-
-                mp4_file = cut_video(video_path, audio_path, start, end, temp_mp4)
-                seg_subtitles = cut_subtitles(subtitles, start, end, temp_vtt)
-                video_file = StoredFile.store(mp4_file, "video_files", session, location)
-                subs_file = StoredFile.store(seg_subtitles, "subs_files", session, location)
-                video_file.delocalize(session, location)
-                subs_file.delocalize(session, location)
-
-                segment = Segment.objects.create(
-                    dataset_video=dataset_video,
-                    video=video_file,
-                    start=start,
-                    end=end,
-                    subtitles=subs_file,
-                )
 
 
-def post_project_to_mturk(project, tasks, turk_credentials):
+async def cut_and_delocalize_video(dataset_video, session, location):
+    # cut_video
+    await cut_dataset_video(dataset_video, session, location)
+
+    # save video to storage
+    await dataset_video.video.delocalize(session, location)
+    await dataset_video.video.asave()
+    if dataset_video.audio:
+        await dataset_video.audio.delocalize(session, location)
+    if dataset_video.subtitles:
+        await dataset_video.subtitles.delocalize(session, location)
+    # save dataset video to DB
+    dataset_video.is_cut = True
+    await dataset_video.asave()
+
+
+async def post_project_to_mturk(project, tasks, mturk):
     messages = []
     is_started = True
     turk_hit_group_id = None
     try:
-        mturk = MTurk()
-        mturk.connect(turk_credentials)
-        turk_hit_group_id = mturk.create_hits(project, tasks, messages)
+        async with mturk.connect() as client:
+            turk_hit_group_id = await mturk.create_hits(client, project, tasks, messages)
     # except Exception as x:
-    except NotImplementedError as x:
+    except Exception as x:
         messages.append(['error', str(x)])
         is_started = False
     finally:
-        ic(turk_hit_group_id)
-        type(project).objects.filter(pk=project.id).update(
+        await type(project).objects.filter(pk=project.id).aupdate(
             is_busy=False, is_started=is_started,
             messages=messages, turk_hit_group_id=turk_hit_group_id or '',
         )
 
 
-def get_assignments_from_mturk(project, turk_credentials):
+async def get_assignments_from_mturk(project, turk_credentials):
     messages = []
     try:
-        mturk = MTurk()
-        mturk.connect(turk_credentials)
-        tasks = project.tasks.exclude(turk_hit_id='').prefetch_related('assignments')
-        for task in tasks:
-            ic(task)
-            turk_assignments = mturk.get_assignments(task.turk_hit_id, project.questions)
-            ic(turk_assignments)
-            for turk_assignment_id, turk_assignment in turk_assignments.items():
-                worker, _created = Worker.objects.get_or_create(worker_id=turk_assignment['worker_id'], service="MTurk")
-                ic(worker)
-                defaults = {
-                    "worker": worker,
-                    "is_approved": turk_assignment['is_approved'],
-                    "result": turk_assignment['result'],
-                }
-                assignment = Assignment.objects.update_or_create(
-                    task=task, turk_assignment_id=turk_assignment_id,
-                    defaults=defaults,
-                )
-                ic(assignment)
-        ic("done")
+        mturk = MTurk(turk_credentials)
+        async with mturk.connect() as client:
+            tasks = project.tasks.exclude(turk_hit_id='').prefetch_related('assignments')
+            async for task in tasks:
+                turk_assignments = await mturk.get_assignments(client, task.turk_hit_id, project.questions)
+                for turk_assignment_id, turk_assignment in turk_assignments.items():
+                    worker, _created = await Worker.objects.aget_or_create(worker_id=turk_assignment['worker_id'], service="MTurk")
+                    defaults = {
+                        "worker": worker,
+                        "is_approved": turk_assignment['is_approved'],
+                        "result": turk_assignment['result'],
+                    }
+                    assignment = await Assignment.objects.aupdate_or_create(
+                        task=task, turk_assignment_id=turk_assignment_id,
+                        defaults=defaults,
+                    )
     except Exception as x:
         ic("error", str(x))
         messages.append(['error', str(x)])
     finally:
-        ic("finally")
-        type(project).objects.filter(pk=project.id).update(
+        await type(project).objects.filter(pk=project.id).aupdate(
             is_busy=False, messages=messages,
         )
 

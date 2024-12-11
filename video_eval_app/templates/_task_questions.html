@@ -54,6 +54,8 @@
             {% endfor %}
           {% elif question.type == 'text' %}
             <input class="form-control" type="text" name="q-{{ question.id }}" id="q-{{ question.id }}" value="{{answer}}" {{disabled}}>
+          {% elif question.type == 'textarea' %}
+            <textarea class="form-control" name="q-{{ question.id }}" id="q-{{ question.id }}" {{disabled}}>{{answer}}</textarea>
           {% endif %}
         </fieldset>
       {% endwith %}

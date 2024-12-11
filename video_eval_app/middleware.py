@@ -9,6 +9,8 @@ class CredentialMiddleware:
         self.get_response = get_response
 
     def __call__(self, request):
+        request.user # preload user
+
         credentials = request.COOKIES.get(settings.CREDENTIALS_COOKIE_NAME)
         if credentials:
             request.credentials = json.loads(credentials)
