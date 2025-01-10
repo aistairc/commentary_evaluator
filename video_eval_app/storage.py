@@ -5,7 +5,7 @@ import hashlib
 import os
 import uuid
 import shutil
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from tempfile import NamedTemporaryFile
 
 from django.conf import settings
@@ -17,7 +17,7 @@ from django.core.files.storage import default_storage
 import botocore
 import boto3
 
-from .mturk import make_aws_session, NoSessionError
+from .mturk import make_aws_session
 
 
 CONTENT_TYPES = {
@@ -57,7 +57,7 @@ def store_file(file, subdir, session, location):
     shutil.move(temp_file.name, real_path)
     return file.name, path, h
 
-def delocalize_file(path, session, location):
+async def delocalize_file(path, session, location):
     if not (session and location):
         return None
 
@@ -71,35 +71,33 @@ def delocalize_file(path, session, location):
     bucket, dir_key = location.split('/', 1)
     key = f"{dir_key}/{path}" if dir_key else path
 
-    s3 = session.client('s3')
-    try:
-        # does it exist already on S3?
-        s3.head_object(Bucket=bucket, Key=key)
-    except botocore.exceptions.ClientError as e:
-        # it does not, so upload
-        extra_args = {
-            'ACL': 'public-read',
-            'ContentType': content_type,
-        }
+    async with session.client('s3') as s3:
         try:
-            s3.upload_file(real_path, bucket, key, ExtraArgs=extra_args)
-        except boto3.exceptions.S3UploadFailedError:
-            print("S3 upload failed") # TODO: handle better?
-            return
+            # does it exist already on S3?
+            await s3.head_object(Bucket=bucket, Key=key)
+        except botocore.exceptions.ClientError as e:
+            # it does not, so upload
+            extra_args = {
+                'ACL': 'public-read',
+                'ContentType': content_type,
+            }
+            try:
+                await s3.upload_file(real_path, bucket, key, ExtraArgs=extra_args)
+            except boto3.exceptions.S3UploadFailedError:
+                print("S3 upload failed") # TODO: handle better?
+                return
     os.unlink(real_path)
     return bucket, key
 
-@contextmanager
-def local_file(path, bucket, key, session):
+@asynccontextmanager
+async def local_file(path, bucket, key, session):
     if bucket:
-        if not session:
-            raise NoSessionError()
-        s3 = session.client('s3')
         temp_dir = default_storage.path('tmp')
         os.path.makedirs(temp_dir, exist_ok=True)
         with NamedTemporaryFile(dir=temp_dir) as temp_file:
             temp_file.close()
-            s3.download_file(bucket, key, temp_file.name)
+            async with session.client('s3') as s3:
+                await s3.download_file(bucket, key, temp_file.name)
             yield temp_file.name
     else:
         yield default_storage.path(path)

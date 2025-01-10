@@ -31,7 +31,7 @@
         </div>
       {% endfor %}
       <div class="form-text">
-        "Anonymous" returns evaluations as a list. The other three will have evaluations keyed by the worker. "Numbered" will randomly assign integral numbers to participating workers, which will be consistent only within a single result download. "Hashed" will assign users hashed identifiers, keeping them anonymous but identifiable across datasets, projects and downloads. Finally, "Username" will reveal the username for the local workers, and Turk Worker ID for those who do not have a local account.
+        "Anonymous" returns evaluations as a list. The other three will have evaluations keyed by the worker. "Numbered" will randomly assign integral numbers to participating workers, which will be consistent only within a single result download. "Hashed" will assign users hashed identifiers, keeping them anonymous but identifiable across datasets, projects and downloads. Finally, "Username" will reveal the username for the local workers, and worker ID and service name for crowd-sourced workers.
       </div>
     </div>
     <div class="mb-3">
@@ -40,7 +40,7 @@
   {
     "id": "question ID",
     "instruction": "&lt;p&gt;Question text in &lt;b&gt;HTML&lt;/b&gt;&lt;/p&gt;",
-    "type": "checkbox",<span class="text-info user-select-none"> (or "radio", "text")</span>
+    "type": "checkbox",<span class="text-info user-select-none"> (or "radio", "text", "textarea")</span>
     "options": [<span class="text-info user-select-none"> (not used for "text" questions)</span>
       { "value": 1, "text": "option 1 text in &lt;b&gt;HTML&lt;/b&gt;" }<span class="text-info user-select-none">,
       more options...</span>

@@ -1,6 +1,6 @@
 import uuid
 from functools import partial
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 
 from django.db import models
 from django.conf import settings
@@ -67,23 +67,23 @@ class StoredFile(models.Model):
     key = models.CharField(max_length=255, blank=True)
 
     @classmethod
-    def store(cls, file, subdir, session=None, location=None):
+    async def store(cls, file, subdir, session=None, location=None):
         if not file:
             return None
 
         name, path, md5sum = store_file(file, subdir, session, location)
-        instance = cls.objects.create(name=name, path=path, md5sum=md5sum)
+        instance = await cls.objects.acreate(name=name, path=path, md5sum=md5sum)
         return instance
 
-    def delocalize(self, session, location):
-        if result := delocalize_file(self.path, session, location):
+    async def delocalize(self, session, location):
+        if result := await delocalize_file(self.path, session, location):
             self.bucket, self.key = result
-            self.save()
+            await self.asave()
         return self
 
-    @contextmanager
-    def local(self, session=None):
-        with local_file(self.path, self.bucket, self.key, session) as name:
+    @asynccontextmanager
+    async def local(self, session=None):
+        async with local_file(self.path, self.bucket, self.key, session) as name:
             yield name
 
     @property

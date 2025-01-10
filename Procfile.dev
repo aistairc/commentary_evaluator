@@ -2,4 +2,4 @@
 
 app: ./manage.py runserver 7994
 # app: uvicorn --reload video_evaluation.asgi:application --reload-include "*.py" --reload-include "*.html" --reload-include "*.css"
-tasks: ./manage.py qcluster
+# tasks: ./manage.py qcluster

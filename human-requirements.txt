@@ -1,7 +1,8 @@
 django
 django-guardian
 django-q2
-ffmpeg-python
+# ffmpeg-python
+python-ffmpeg
 webvtt-py
 uvicorn[standard]
 setuptools
@@ -11,7 +12,7 @@ django-invitations
 schema
 xmltodict
 nh3
-boto3
+aioboto3
 chardet
 
 # OPTIONAL
