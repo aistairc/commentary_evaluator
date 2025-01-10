@@ -63,7 +63,7 @@ questions_schema = Schema([
         ),
         Optional("options"): [
             {
-                "value": Or(Use(str), Use(int)),
+                "value": Or(Use(int), Use(str)),
                 "text": Use(str),
             }
         ],
