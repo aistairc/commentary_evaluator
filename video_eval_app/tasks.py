@@ -111,7 +111,6 @@ async def cut_dataset_video(dataset_video, session, location):
             temp_vtt.close()
 
             async with video_path_ctx as video_path, audio_path_ctx as audio_path:
-                # TODO: AsyncQueue
                 mp4_file = await cut_video(video_path, audio_path, start, end, temp_mp4)
             seg_subtitles = cut_subtitles(subtitles, start, end, temp_vtt)
             video_file = await StoredFile.store(mp4_file, "video_files", session, location)
@@ -127,6 +126,7 @@ async def cut_dataset_video(dataset_video, session, location):
                 end=end,
                 subtitles=subs_file,
             )
+
 
 
 async def cut_and_delocalize_video(dataset_video, session, location):

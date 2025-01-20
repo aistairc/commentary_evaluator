@@ -72,7 +72,7 @@ class StoredFile(models.Model):
             return None
 
         name, path, md5sum = store_file(file, subdir, session, location)
-        instance = await cls.objects.acreate(name=name, path=path, md5sum=md5sum)
+        instance, _ = await cls.objects.aget_or_create(path=path, md5sum=md5sum, defaults={ "name": name })
         return instance
 
     async def delocalize(self, session, location):

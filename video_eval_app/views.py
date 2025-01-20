@@ -42,6 +42,7 @@ from .tasks import get_assignments_from_mturk, post_project_to_mturk, cut_and_de
 from .mturk import MTurk, make_aws_session
 from .utils import convert_answers, load_subtitles
 from .json_schemata import parse_hit_type, parse_credentials, parse_questions
+from .async_queue import AsyncQueue
 
 
 Invitation = get_invitation_model()
@@ -53,6 +54,7 @@ ITEMS_PER_PAGE = 10
 
 class NoCredentialsError(Exception): pass
 
+ffmpeg_queue = AsyncQueue()
 
 arender = sync_to_async(render)
 
@@ -140,7 +142,7 @@ async def upload_video(request, dataset, credentials):
         name=name,
         cuts=cuts_data,
     )
-    await cut_and_delocalize_video(dataset_video, session, location)
+    await ffmpeg_queue(cut_and_delocalize_video, dataset_video, session, location)
 
 
 def bulk_remove_perm(perm, query, obj):
