@@ -1,6 +1,7 @@
+from re import template
 from icecream import ic # XXX: delete later
 
-from django.contrib.admin.options import messages
+from django.contrib.admin.options import TemplateResponse, messages
 
 import json
 from datetime import datetime
@@ -22,7 +23,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST, require_safe
 from django.db import transaction
 from django.db.utils import IntegrityError
-from django.db.models import Exists, OuterRef, F
+from django.db.models import Exists, OuterRef, F, Count
 from django.utils.safestring import SafeString
 from django.contrib import messages
 from django.contrib.auth import login
@@ -180,12 +181,74 @@ def get_task_list(tasks, request):
         for task in tasks
     ]
 
+# dataset, project, template_vars = get_menu_data(request, dataset_id, project_id)
+def get_menu_data(request, dataset_id=None, project_id=None, assignment=None):
+    user = request.user
+    if assignment:
+        project = assignment.task.project
+        project_id = assignment.task.project_id
+        dataset = project.dataset
+        dataset_id = dataset.id
+    else:
+        project = project_id and Project.objects.get(pk=project_id)
+        if project_id and not dataset_id:
+            dataset_id = project.dataset_id
+        dataset = dataset_id and Dataset.objects.get(pk=dataset_id)
+    dataset_filter = { "dataset": dataset } if dataset else {}
+    manage_project_ids = set(
+        get_objects_for_user(user, 'video_eval_app.manage_project')
+            .filter(**dataset_filter)
+            .values_list('id', flat=True)
+    )
+    evaluate_project_ids = set(
+        get_objects_for_user(user, 'video_eval_app.evaluate_project')
+            .filter(**dataset_filter)
+            .values_list('id', flat=True)
+    )
+    manage_dataset_ids = set(
+        get_objects_for_user(user, 'video_eval_app.manage_dataset')
+            .values_list('id', flat=True)
+    )
+    can_add_dataset = user.has_perm('video_eval_app.add_dataset')
+    if evaluate_project_ids:
+        worker = Worker.objects.filter(user=user).first()
+        evaluation_tasks = {
+            item['project_id']: item['count'] for item in
+            Task.objects.filter(
+                ~Exists(Assignment.objects.filter(
+                    task_id=OuterRef('pk'),
+                    worker=worker,
+                )),
+                project_id__in=evaluate_project_ids,
+            ).values('project_id').annotate(count=Count('id'))
+        }
+    else:
+        evaluation_tasks = None
+
+    template_vars = {
+        'dataset_id': dataset_id,
+        'dataset': dataset,
+        'project_id': project_id,
+        'project': project,
+        'manage_project_ids': manage_project_ids,
+        'evaluate_project_ids': evaluate_project_ids,
+        'manage_dataset_ids': manage_dataset_ids,
+        'can_add_dataset': can_add_dataset,
+        'evaluation_tasks': evaluation_tasks,
+    }
+    return dataset, project, template_vars
+
+aget_menu_data = sync_to_async(get_menu_data)
+
+
 def index(request):
-    return render(request, 'index.html')
+    _dataset, _project, template_vars = get_menu_data(request)
+    return render(request, 'index.html', template_vars)
 
 @login_required
 @require_safe
 def datasets(request):
+    _dataset, _project, template_vars = get_menu_data(request)
     datasets = (
             # managed datasets or
             get_objects_for_user(request.user, 'video_eval_app.manage_dataset') |
@@ -202,14 +265,17 @@ def datasets(request):
     return render(request, 'datasets.html', {
         'page': page,
         'new_url': add_dataset_perm and new_url,
+        **template_vars,
     })
 
 @login_required
 def datasets_new(request):
-    if not request.user.has_perm('video_eval_app.add_dataset'):
+    _dataset, _project, template_vars = get_menu_data(request)
+    can_add_dataset = template_vars['can_add_dataset']
+    if not can_add_dataset:
         return HttpResponse('Forbidden', status=403)
     if request.method in {"GET", "HEAD"}:
-        return render(request, 'datasets_new.html')
+        return render(request, 'datasets_new.html', template_vars)
     elif request.method == 'POST':
         name = request.POST['name']
         dataset = Dataset.objects.create(
@@ -221,16 +287,16 @@ def datasets_new(request):
 
 @login_required
 def dataset_edit(request, dataset_id):
-    dataset = Dataset.objects.get(pk=dataset_id)
-    manage_dataset_perm = request.user.has_perm('manage_dataset', dataset)
+    dataset, _project, template_vars = get_menu_data(request, dataset_id)
+    manage_dataset_perm = dataset_id in template_vars['manage_dataset_ids']
     if not manage_dataset_perm:
         return HttpResponse('Forbidden', status=403)
     if request.method in {"GET", "HEAD"}:
         upload_video_url = request.user.is_authenticated and request.build_absolute_uri(reverse('upload_video_api', args=[dataset.token]))
         return render(request, 'dataset_edit.html', {
-            "editable": manage_dataset_perm,
-            "dataset": dataset,
-            "upload_video_url": manage_dataset_perm and upload_video_url,
+            'editable': manage_dataset_perm,
+            'upload_video_url': manage_dataset_perm and upload_video_url,
+            **template_vars,
         })
     elif request.method == 'POST':
         dataset.name = request.POST['name']
@@ -255,35 +321,27 @@ async def upload_video_api(request, token):
 @login_required
 @require_safe
 def dataset_videos(request, dataset_id):
-    dataset = Dataset.objects.get(pk=dataset_id)
-    manage_dataset_perm = request.user.has_perm('manage_dataset', dataset)
-    has_managed_projects = Dataset.objects.filter(
-        id=dataset.id,
-        projects__in=get_objects_for_user(request.user, 'video_eval_app.manage_project')
-    ).distinct()
-    if not (manage_dataset_perm or has_managed_projects):
+    dataset, _project, template_vars = get_menu_data(request, dataset_id)
+    manage_dataset_perm = dataset_id in template_vars['manage_dataset_ids']
+    managed_projects = dataset.projects.filter(id__in=template_vars['manage_project_ids'])
+    if not (manage_dataset_perm or managed_projects):
         return HttpResponse('Forbidden', status=403)
     paginator = Paginator(dataset.dataset_videos.order_by('name').all(), ITEMS_PER_PAGE)
     page_number = request.GET.get("page")
     page = paginator.get_page(page_number)
     new_url = request.user.is_authenticated and reverse('dataset_videos_new', args=[dataset.id])
     return render(request, 'dataset_videos.html', {
-        "dataset": dataset,
-        "page": page,
-        "new_url": new_url,
+        'page': page,
+        'new_url': new_url,
+        **template_vars,
     })
 
 @login_required
 async def dataset_video(request, dataset_id, dataset_video_id=None):
-    dataset = await Dataset.objects.aget(pk=dataset_id)
-    manage_dataset_perm = await auser_has_perm(request, 'manage_dataset', dataset)
-    projects_for_user = await sync_to_async(get_objects_for_user)(request.user, 'video_eval_app.manage_project')
-    has_managed_projects = await Dataset.objects.filter(
-        id=dataset.id,
-        projects__in=projects_for_user,
-    ).distinct().acount()
-    
-    if not (manage_dataset_perm or has_managed_projects):
+    dataset, _project, template_vars = await aget_menu_data(request, dataset_id)
+    manage_dataset_perm = dataset_id in template_vars['manage_dataset_ids']
+    managed_projects = dataset.projects.filter(id__in=template_vars['manage_project_ids'])
+    if not (manage_dataset_perm or managed_projects):
         return HttpResponse('Forbidden', status=403)
     if request.method in {"GET", "HEAD"}:
         if dataset_video_id:
@@ -296,9 +354,9 @@ async def dataset_video(request, dataset_id, dataset_video_id=None):
             page = None
         return await arender(request, 'dataset_video.html', {
             'editable': manage_dataset_perm,
-            'dataset': dataset,
             'dataset_video': dataset_video,
             'page': page,
+            **template_vars,
         })
     elif request.method == 'POST':
         await upload_video(request, dataset, request.credentials)
@@ -307,33 +365,33 @@ async def dataset_video(request, dataset_id, dataset_video_id=None):
 @login_required
 @require_safe
 def dataset_projects(request, dataset_id):
-    dataset = Dataset.objects.get(pk=dataset_id)
-    manage_dataset_perm = request.user.has_perm('manage_dataset', dataset)
+    dataset, _project, template_vars = get_menu_data(request, dataset_id)
+    manage_dataset_perm = dataset_id in template_vars['manage_dataset_ids']
     if manage_dataset_perm:
         projects = dataset.projects.order_by('name').all()
     else:
-        projects = get_objects_for_user(request.user, 'video_eval_app.manage_project').filter(dataset=dataset).order_by('name')
+        projects = dataset.projects.filter(id__in=template_vars['manage_project_ids']).order_by('name')
     paginator = Paginator(projects, ITEMS_PER_PAGE)
     page_number = request.GET.get("page")
     page = paginator.get_page(page_number)
     new_url = manage_dataset_perm and reverse('dataset_project_new', args=[dataset.id])
     return render(request, 'dataset_projects.html', {
-        "dataset": dataset,
         "page": page,
         "new_url": new_url,
+        **template_vars,
     })
 
 @login_required
 async def dataset_project(request, dataset_id, project_id=None):
-    dataset = await Dataset.objects.aget(pk=dataset_id)
+    dataset, project, template_vars = await aget_menu_data(request, dataset_id, project_id)
     if project_id:
-        project = await Project.objects.aget(pk=project_id)
-        if not await auser_has_perm(request, 'video_eval_app.manage_project', project):
+        if project_id not in template_vars['manage_project_ids']:
             return HttpResponse('Forbidden', status=403)
     else:
-        if not await auser_has_perm(request, 'video_eval_app.manage_dataset', dataset):
+        if dataset_id not in template_vars['manage_dataset_ids']:
             return HttpResponse('Forbidden', status=403)
         project = Project()
+        template_vars['project'] = project
     if request.method in {"GET", "HEAD"}:
         if project_id:
             num_approved_assignments = await Assignment.objects.filter(
@@ -349,8 +407,6 @@ async def dataset_project(request, dataset_id, project_id=None):
         questions = SafeString(json.dumps(project.questions, ensure_ascii=False)) if project.questions else ""
         turk_settings = SafeString(json.dumps(project.turk_settings, ensure_ascii=False)) if project.turk_settings else ""
         return await arender(request, 'dataset_project.html', {
-            'dataset': dataset,
-            'project': project,
             'project_messages': project.messages,
             'identity_choices': Project.WorkerIdentity.choices,
             'questions': questions,
@@ -360,11 +416,11 @@ async def dataset_project(request, dataset_id, project_id=None):
             'busy_disabled': 'disabled' if project.is_busy else '',
             'cred_busy_disabled': 'disabled' if project.is_busy or not request.credentials else '',
             'num_approved_assignments': num_approved_assignments,
+            **template_vars,
         })
     elif request.method == 'POST':
         if project.is_busy:
             messages.warning(request, 'The project became busy, the operation was not performed. Please try again later.')
-            pass # do nothing, redirect back
         elif request.POST.get('dismiss_messages'):
             project.messages = []
             await project.asave()
@@ -458,21 +514,11 @@ async def dataset_project(request, dataset_id, project_id=None):
 @login_required
 @require_safe
 def projects(request):
-    manage_project_ids = set(
-        get_objects_for_user(request.user, 'video_eval_app.manage_project')
-            .values_list('id', flat=True)
-    )
-    evaluate_project_ids = set(
-        get_objects_for_user(request.user, 'video_eval_app.evaluate_project')
-            .values_list('id', flat=True)
-    )
-    manage_dataset_ids = set(
-        get_objects_for_user(request.user, 'video_eval_app.manage_dataset')
-            .values_list('id', flat=True)
-    )
+    _dataset, _project, template_vars = get_menu_data(request)
     projects = (
-        Project.objects.filter(pk__in=(evaluate_project_ids | manage_project_ids))
-            .prefetch_related('dataset').order_by('name')
+        Project.objects.filter(
+            pk__in=(template_vars['evaluate_project_ids'] | template_vars['manage_project_ids'])
+        ).prefetch_related('dataset').order_by('name')
     )
     paginator = Paginator(projects, ITEMS_PER_PAGE)
     page_number = request.GET.get("page")
@@ -480,19 +526,24 @@ def projects(request):
     page.object_list = [
         {
             "project": project,
+            # TODO: we could rewrite this
             "evaluate": True,
-            "manage_project_perm": project.id in manage_project_ids,
-            "evaluate_project_perm": project.id in evaluate_project_ids,
-            "manage_dataset_perm": project.dataset.id in manage_dataset_ids,
+            "manage_project_perm": project.id in template_vars['manage_project_ids'],
+            "evaluate_project_perm": project.id in template_vars['evaluate_project_ids'],
+            "manage_dataset_perm": project.dataset.id in template_vars['manage_dataset_ids'],
         }
         for project in page.object_list
     ]
-    return render(request, 'projects.html', { 'page': page })
+    return render(request, 'projects.html', {
+        'page': page,
+        **template_vars,
+    })
 
 @login_required
 def dataset_managers(request, dataset_id):
-    dataset = Dataset.objects.get(pk=dataset_id)
-    if not request.user.has_perm('manage_dataset', dataset):
+    dataset, _project, template_vars = get_menu_data(request, dataset_id)
+    manage_dataset_perm = dataset_id in template_vars['manage_dataset_ids']
+    if not manage_dataset_perm:
         return HttpResponse('Forbidden', status=403)
     if request.method in {"GET", "HEAD"}:
         users = User.objects.filter(is_superuser=False).exclude(username='AnonymousUser').order_by('username')
@@ -509,10 +560,10 @@ def dataset_managers(request, dataset_id):
         ]
         new_url = request.user.has_perm('add_user') and reverse('dataset_invite', args=[dataset.id])
         return render(request, 'dataset_managers.html', {
-            'dataset': dataset,
             'page': page,
             'new_url': new_url,
             'managers': get_user_list_for_perm(perms, 'manage_dataset'),
+            **template_vars,
         })
     elif request.method == 'POST':
         if 'manage_dataset' in request.POST:
@@ -522,6 +573,7 @@ def dataset_managers(request, dataset_id):
             manage = request.POST.get("manage")
             user = User.objects.get(pk=user_id)
             if manage:
+                # TODO: check if this is correct, and comment the logic if it is; they look switched around
                 if manage == 'False':
                     assign_perm('manage_dataset', user, dataset)
                 else:
@@ -530,20 +582,22 @@ def dataset_managers(request, dataset_id):
 
 @login_required
 def project_approvals(request, project_id):
-    project = Project.objects.get(pk=project_id)
+    dataset, project, template_vars = get_menu_data(request, None, project_id)
+    # TODO: check permissions
     assignments = Assignment.objects.filter(task__project=project).order_by('task__segment__dataset_video__name', 'task__segment__start')
     paginator = Paginator(assignments, ITEMS_PER_PAGE)
     page_number = request.GET.get("page")
     page = paginator.get_page(page_number)
     return render(request, 'project_approvals.html', {
-        'dataset': project.dataset,
-        'project': project,
         'page': page,
+        **template_vars,
     })
 
 @login_required
 async def assignment(request, assignment_id):
     assignment = await Assignment.objects.filter(pk=assignment_id).prefetch_related('task__project__dataset').afirst()
+    dataset, project, template_vars = await aget_menu_data(request, assignment=assignment)
+    # TODO: check permissions
     if request.method == 'POST':
         feedback = request.POST.get('feedback')
         feedback_opt = {}
@@ -579,26 +633,24 @@ async def assignment(request, assignment_id):
         return redirect('project_approvals', project_id=assignment.task.project.id)
     else:
         def load_project_segment_and_other_required_data():
-            project = assignment.task.project
             segment = assignment.task.segment
-            project.dataset
             segment.video
             segment.subtitles
-            return project, segment
-        project, segment = await sync_to_async(load_project_segment_and_other_required_data)()
+            return segment
+        segment = await sync_to_async(load_project_segment_and_other_required_data)()
         return await arender(request, 'assignment.html', {
-            'dataset': project.dataset,
-            'project': project,
             'task_id': assignment.task.id,
             'video_url': segment.video.absolute_url(request),
             'subtitles_url': segment.subtitles and segment.subtitles.absolute_url(request),
             'assignment': assignment,
+            **template_vars,
         })
 
 @login_required
 def project_users(request, project_id):
-    project = Project.objects.get(pk=project_id)
-    if not request.user.has_perm('manage_project', project):
+    dataset, project, template_vars = get_menu_data(request, None, project_id)
+    manage_project_perm = project_id in template_vars['manage_project_ids']
+    if not manage_project_perm:
         return HttpResponse('Forbidden', status=403)
     if request.method in {"GET", "HEAD"}:
         users = User.objects.filter(is_superuser=False).exclude(username='AnonymousUser').order_by('username')
@@ -615,12 +667,11 @@ def project_users(request, project_id):
         ]
         new_url = request.user.has_perm('add_user') and reverse('project_invite', args=[project.id])
         return render(request, 'project_users.html', {
-            'dataset': project.dataset,
-            'project': project,
             'page': page,
             'new_url': new_url,
             'evaluators': get_user_list_for_perm(perms, 'evaluate_project'),
             'managers': get_user_list_for_perm(perms, 'manage_project'),
+            **template_vars,
         })
     elif request.method == 'POST':
         if 'evaluate_project' in request.POST:
@@ -631,6 +682,7 @@ def project_users(request, project_id):
             manage = request.POST.get("manage")
             evaluate = request.POST.get("evaluate")
             user = User.objects.get(pk=user_id)
+            # TODO: check if this is correct, and comment the logic if it is; they look switched around
             if evaluate:
                 if evaluate == 'False':
                     assign_perm('evaluate_project', user, project)
@@ -645,21 +697,17 @@ def project_users(request, project_id):
 
 @login_required
 def invite_user(request, dataset_id=None, project_id=None):
+    dataset, project, template_vars = get_menu_data(request, dataset_id, project_id)
     if project_id:
-        project = Project.objects.get(pk=project_id)
-        dataset = Dataset.objects.get(pk=project.dataset.id)
-        if not request.user.has_perm('manage_project', project):
+        manage_project_perm = project_id in template_vars['manage_project_ids']
+        if not manage_project_perm:
             return HttpResponse('Forbidden', status=403)
     elif dataset_id:
-        dataset = Dataset.objects.get(pk=dataset_id)
-        project = None
-        if not request.user.has_perm('manage_dataset', dataset):
+        manage_dataset_perm = dataset_id in template_vars['manage_dataset_ids']
+        if not manage_dataset_perm:
             return HttpResponse('Forbidden', status=403)
     if request.method in {'GET', 'HEAD'}:
-        return render(request, 'invite_user.html', {
-            'dataset': dataset,
-            'project': project,
-        })
+        return render(request, 'invite_user.html', template_vars)
     elif request.method == 'POST':
         role = request.POST['role']
         email = request.POST['email']
@@ -668,32 +716,30 @@ def invite_user(request, dataset_id=None, project_id=None):
             pass # TODO: refuse to send duplicate invitation
         invitation = Invitation.create(email=email, role=role, dataset=dataset, project=project)
         invitation.send_invitation(request)
-        if project:
-            return redirect('project_users', project_id=project.id)
+        if project_id:
+            return redirect('project_users', project_id=project_id)
         else:
-            return redirect('dataset_managers', dataset_id=dataset.id)
+            return redirect('dataset_managers', dataset_id=dataset_id)
 
 @login_required
 def segment(request, segment_id):
     segment = Segment.objects.get(pk=segment_id)
-    dataset = segment.dataset_video.dataset
-    manage_dataset_perm = request.user.has_perm('manage_dataset', dataset)
-    has_managed_projects = Dataset.objects.filter(
-        id=dataset.id,
-        projects__in=get_objects_for_user(request.user, 'video_eval_app.manage_project')
-    ).distinct()
-    if not (manage_dataset_perm or has_managed_projects): # TODO: or a project
+    dataset_id = segment.dataset_video.dataset_id
+    dataset, _project, template_vars = get_menu_data(request, dataset_id)
+    manage_dataset_perm = dataset_id in template_vars['manage_dataset_ids']
+    managed_projects = dataset.projects.filter(id__in=template_vars['manage_project_ids'])
+    if not (manage_dataset_perm or managed_projects): # TODO: or a project
         return HttpResponse('Forbidden', status=403)
     return render(request, 'segment.html', {
         'segment': segment,
-        'dataset': dataset,
+        **template_vars,
     })
 
 @login_required
 @require_safe
 def project_eval(request, project_id):
-    project = Project.objects.get(pk=project_id)
-    evaluate_project_perm = request.user.has_perm('evaluate_project', project)
+    dataset, project, template_vars = get_menu_data(request, None, project_id)
+    evaluate_project_perm = project_id in template_vars['evaluate_project_ids']
     if not evaluate_project_perm:
         return HttpResponse('Forbidden', status=403)
     worker, _created = Worker.objects.get_or_create(user=request.user)
@@ -705,18 +751,19 @@ def project_eval(request, project_id):
         project=project,
     ).first()
     return render(request, 'project_eval.html', {
-        'dataset': project.dataset,
-        'project': project,
+        # TODO: remind me, what is evaluate?
         'evaluate': True,
         'dataset_video': task and task.segment.dataset_video,
         'task_id': task and task.id,
         'video_url': task and task.segment.video.url,
         'subtitles_url': task and task.segment.subtitles and task.segment.subtitles.url,
+        **template_vars,
     })
 
 @require_POST
 def task_eval_submit(request, task_id):
     task = Task.objects.get(pk=task_id)
+    # TODO: check permissions
     result = convert_answers(task.project.questions, request=request)
     Assignment.objects.create(
         task=task,
@@ -727,15 +774,18 @@ def task_eval_submit(request, task_id):
 
 @login_required
 def project_external(request, project_id):
-    project = Project.objects.get(pk=project_id)
-    if not request.user.has_perm('video_eval_app.manage_project', project):
+    dataset, project, template_vars = get_menu_data(request, None, project_id)
+    ic(project_id)
+    ic(template_vars['manage_project_ids'])
+    manage_project_perm = project_id in template_vars['manage_project_ids']
+    ic(manage_project_perm)
+    if not manage_project_perm:
         return HttpResponse('Forbidden', status=403)
     if request.method in {'GET', 'HEAD'}:
         return render(request, 'project_external.html', {
-            'dataset': project.dataset,
-            'project': project,
             'list_formats': settings.EXTERNAL_LIST_FORMATS,
             'var_formats': settings.EXTERNAL_VAR_FORMATS,
+            **template_vars,
         })
     elif request.method == 'POST':
         results_file = request.FILES.get('results')
@@ -787,9 +837,11 @@ def project_external(request, project_id):
 @login_required
 @require_safe
 def external_template(request, project_id):
+    # not using layout, so full get_menu_data is not needed
     project = Project.objects.get(pk=project_id)
     if not request.user.has_perm('video_eval_app.manage_project', project):
         return HttpResponse('Forbidden', status=403)
+
     var_format_id = request.GET["var-format"]
     var_format_obj = settings.EXTERNAL_VAR_FORMATS[var_format_id]
     var_format = var_format_obj.get('form')
@@ -811,9 +863,11 @@ def external_template(request, project_id):
 @login_required
 @require_safe
 def external_datalist(request, project_id):
+    # not using layout, so full get_menu_data is not needed
     project = Project.objects.get(pk=project_id)
     if not request.user.has_perm('video_eval_app.manage_project', project):
         return HttpResponse('Forbidden', status=403)
+
     list_format_id = request.GET["list-format"]
     list_format_obj = settings.EXTERNAL_LIST_FORMATS[list_format_id]
     list_format_opts = list_format_obj.get('opts', {})
@@ -840,9 +894,11 @@ def external_datalist(request, project_id):
 @login_required
 @require_safe
 def project_results(request, project_id):
+    # not using layout, so full get_menu_data is not needed
     project = Project.objects.get(pk=project_id)
     if not request.user.has_perm('video_eval_app.manage_project', project):
         return HttpResponse('Forbidden', status=403)
+
     tasks = (
         Task.objects.filter(project_id=project.id)
             .select_related('segment')
@@ -897,6 +953,7 @@ def project_results(request, project_id):
     )
 
 def accept_invite(request, key):
+    # not using layout, so full get_menu_data is not needed
     try:
         invitation = Invitation.objects.get(key=key.lower())
     except Invitation.DoesNotExist:
@@ -937,6 +994,7 @@ def accept_invite(request, key):
 
 @login_required
 async def credentials(request):
+    _dataset, _project, template_vars = await aget_menu_data(request)
     if request.method in {"GET", "HEAD"}:
         location = ''
         if request.credentials:
@@ -945,6 +1003,7 @@ async def credentials(request):
         return await arender(request, 'credentials.html', {
             "credentials": credentials_text,
             "location": location,
+            **template_vars,
         })
     elif request.method == 'POST':
         try:
@@ -986,14 +1045,3 @@ async def credentials(request):
             expires=expiration, httponly=True,
         )
         return response
-
-
-
-
-# async def turk_question(request):
-#     assignment_id = request.GET.get('assignmentId')
-#     turk_submit_to = request.GET.get('turkSubmitTo')
-#     worker_id = request.GET.get('workerId')
-#     hit_id = request.GET.get('hitId')
-#     turk_submit_url = turk_submit_to + "mturk/externalSubmit"
-#     return HttpResponse(f"question_id: {question_id}")

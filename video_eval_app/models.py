@@ -17,6 +17,8 @@ from .utils import secs_to_timestamp
 from .storage import delocalize_file, store_file, local_file
 
 CONTENT_TYPES = {
+    ".avi": "video/x-msvideo",
+    ".mkv": "video/x-matroska",
     ".mp4": "video/mp4",
     ".mp3": "audio/mpeg",
     ".wav": "audio/wav",
