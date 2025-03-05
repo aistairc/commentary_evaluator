@@ -11,7 +11,7 @@
         <tr>
           <th scope="col">ID</th>
           <th scope="col">Name</th>
-          <th scope="col"></th>
+          <th scope="col">MTurk</th>
         </tr>
       </thead>
       <tbody>
@@ -22,6 +22,15 @@
               <a href="{% url 'dataset_project' dataset.id project.id %}" class="btn-link">
                 {{ project.name }}
               </a>
+            </td>
+            <td>
+              <i class="fa-solid
+                {% if project.turk_settings %}
+                  fa-check
+                {% else %}
+                  fa-xmark
+                {% endif %}
+              "></i>
             </td>
           </tr>
         {% endfor %}

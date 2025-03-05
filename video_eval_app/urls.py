@@ -24,6 +24,7 @@ urlpatterns = [
     path("segments/<str:segment_id>", views.segment, name="segment"),
     path("tasks/<int:task_id>/submit", views.task_eval_submit, name="task_eval_submit"),
     path("assignments/<int:assignment_id>", views.assignment, name="assignment"),
+    path("assignments_approve_all/<int:project_id>", views.assignment_approve_all, name="assignment_approve_all"),
     path("datasets/<int:dataset_id>/invite", views.invite_user, name="dataset_invite"),
     path("projects/<int:project_id>/invite", views.invite_user, name="project_invite"),
     path("projects/<int:project_id>/external", views.project_external, name="project_external"),

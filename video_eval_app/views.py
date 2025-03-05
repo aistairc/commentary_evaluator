@@ -594,6 +594,38 @@ def project_approvals(request, project_id):
     })
 
 @login_required
+@require_POST
+async def assignment_approve_all(request, project_id):
+    dataset, project, template_vars = await aget_menu_data(request, project_id=project_id)
+    manage_project_perm = project_id in template_vars['manage_project_ids']
+    if not manage_project_perm:
+        return HttpResponse('Forbidden', status=403)
+    await Assignment.objects.filter(
+        task__project=project,
+        is_approved__isnull=True,
+        turk_assignment_id__isnull=True,
+    ).aupdate(is_approved=True)
+    mturk = MTurk(request.credentials)
+    if project.turk_settings:
+        mturk = MTurk(request.credentials)
+        async with mturk.connect() as client:
+            turk_assignments = Assignment.objects.filter(
+                task__project=project,
+                is_approved__isnull=True,
+                turk_assignment_id__isnull=False,
+            )
+            async for assignment in turk_assignments:
+                response = await client.approve_assignment(
+                    AssignmentId=assignment.turk_assignment_id,
+                )
+                ic(response)
+    await Assignment.objects.filter(
+        task__project=project,
+        is_approved__isnull=True,
+    ).aupdate(is_approved=True)
+    return redirect('project_approvals', project_id=project_id)
+
+@login_required
 async def assignment(request, assignment_id):
     assignment = await Assignment.objects.filter(pk=assignment_id).prefetch_related('task__project__dataset').afirst()
     dataset, project, template_vars = await aget_menu_data(request, assignment=assignment)

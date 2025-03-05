@@ -48,5 +48,12 @@
   </table>
 
   {% include '_paginator.html' %}
+
+  <div class="row">
+    <form method="POST" action="{% url 'assignment_approve_all' project_id %}">
+      {% csrf_token %}
+      <button onclick="return confirm('Are you sure you wish to approve all non-rejected assignments?')" class="btn btn-primary">Approve all non-rejected</button>
+    </form>
+  </div>
 {% endblock %}
 {# vim: set ft=htmldjango: #}
