@@ -1,11 +1,13 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <h2>Invite user to
+  <h2>Invite user
     {% if project %}
-      project
+      to project
+    {% elif dataset %}
+      to dataset
     {% else %}
-      dataset
+      as a dataset creator
     {% endif %}
   </h2>
   
@@ -18,8 +20,10 @@
     {% if project %}
       <button type="submit" class="btn btn-primary" name="role" value="manage_project">Invite manager</button>
       <button type="submit" class="btn btn-primary" name="role" value="evaluate_project">Invite evaluator</button>
-    {% else %}
+    {% elif dataset %}
       <button type="submit" class="btn btn-primary" name="role" value="manage_dataset">Invite manager</button>
+    {% else %}
+      <button type="submit" class="btn btn-primary" name="role" value="creator">Invite dataset creator</button>
     {% endif %}
   </form>
 {% endblock %}

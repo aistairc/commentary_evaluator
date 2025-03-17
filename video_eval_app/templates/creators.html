@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block content %}
+  <h2>Dataset Creators</h2>
+
+  {% include '_paginator.html' %}
+
+  <div class="responsive-table w-100">
+    <table class="table">
+      <thead>
+        <tr>
+          <th scope="col">Username</th>
+          <th scope="col">Creator</th>
+          <th scope="col">Staff</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for user in page %}
+          <tr>
+            <th scope="row">{{ user.username }}</th>
+            <td>
+              <form method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="user_id" value="{{ user.id }}">
+                <button name="creator" value="{{ user.is_creator }}" class="btn btn-sm
+                  {% if user.is_creator %}
+                    btn-success
+                  {% else %}
+                    btn-light
+                  {% endif %}
+                py-0 px-1"
+                  {% if user.id == request.user.id %}
+                    disabled
+                  {% endif %}
+                >
+                  <i class="fa-solid
+                    {% if user.is_creator %}
+                      fa-check
+                    {% else %}
+                      fa-xmark
+                    {% endif %}
+                  "></i>
+                </button>
+              </form>
+            </td>
+            <td>
+              <form method="POST">
+                {% csrf_token %}
+                <input type="hidden" name="user_id" value="{{ user.id }}">
+                <button name="staff" value="{{ user.is_staff }}" class="btn btn-sm
+                  {% if user.is_staff %}
+                    btn-success
+                  {% else %}
+                    btn-light
+                  {% endif %}
+                py-0 px-1"
+                  {% if user.id == request.user.id %}
+                    disabled
+                  {% endif %}
+                >
+                  <i class="fa-solid
+                    {% if user.is_staff %}
+                      fa-check
+                    {% else %}
+                      fa-xmark
+                    {% endif %}
+                  "></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% include '_paginator.html' %}
+
+{% endblock %}
+{# vim: set ft=htmldjango: #}

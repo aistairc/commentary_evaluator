@@ -53,6 +53,13 @@
               </li>
 
               {% if request.user.is_authenticated %}
+                {% if request.user.is_staff %}
+                  <li class="nav-item">{# dataset creators #}
+                    <a class="nav-link {% if request.current_url_name == 'creators' %}active{% endif %}" href="{% url 'creators' %}">
+                      Dataset Creators
+                    </a>
+                  </li>{# dataset creators #}
+                {% endif %}
                 {% if can_add_datasets or manage_dataset_ids or manage_project_ids %}
                   <li class="nav-item">{# datasets #}
 

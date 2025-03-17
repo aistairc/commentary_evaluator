@@ -1,8 +1,6 @@
 {% extends "base.html" %}
 
 {% block content %}
-  <h1>New Dataset</h1>
-
   <form method="POST">
     {% csrf_token %}
     <input type="hidden" name="key" value="{{invitation.key}}">

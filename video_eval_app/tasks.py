@@ -1,3 +1,4 @@
+from json import load
 from django.contrib.auth.decorators import sync_to_async
 from icecream import ic # DEBUG:
 
@@ -62,7 +63,9 @@ async def cut_video(video, audio, start, end, temp_mp4):
             map=out_map,
             c='copy',
         )
+    # import shlex; print(' '.join(shlex.quote(arg) for arg in ffmpeg.arguments))
     await ffmpeg.execute()
+    # print("done")
 
     file_path = Path(temp_mp4.name).relative_to(settings.MEDIA_ROOT)
     file = File(file=open(temp_mp4.name, 'rb'), name="dummy.mp4")
@@ -82,6 +85,11 @@ def cut_subtitles(all_subs, start, end, temp_vtt):
     return file
 
 async def cut_dataset_video(dataset_video, session, location):
+    def load_dependents():
+        dataset_video.video
+        dataset_video.audio
+        dataset_video.subtitles
+    await sync_to_async(load_dependents)()
     temp_dir = default_storage.path('tmp')
     os.makedirs(temp_dir, exist_ok=True)
     await dataset_video.segments.all().adelete()

@@ -27,6 +27,7 @@ from django.db.models import Exists, OuterRef, F, Count
 from django.utils.safestring import SafeString
 from django.contrib import messages
 from django.contrib.auth import login
+from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
 from asgiref.sync import sync_to_async
 from guardian.shortcuts import assign_perm, remove_perm, get_objects_for_user, get_users_with_perms
@@ -135,7 +136,7 @@ async def upload_video(request, dataset, credentials):
         cuts_data = None
 
     name = request.POST.get('name', '') or request.FILES["file"].name
-    dataset_video = await DatasetVideo.objects.acreate(
+    dataset_video, _created = await DatasetVideo.objects.aget_or_create(
         dataset=dataset,
         video=video,
         subtitles=subtitles,
@@ -540,6 +541,44 @@ def projects(request):
     })
 
 @login_required
+def creators(request):
+    _dataset, _project, template_vars = get_menu_data(request)
+    if not request.user.is_staff:
+        return HttpResponse('Forbidden', status=403)
+    content_type = ContentType.objects.get_for_model(Dataset)
+    add_permission = Permission.objects.get(content_type=content_type, codename='add_dataset')
+    if request.method in {"GET", "HEAD"}:
+        users = User.objects.filter(is_superuser=False).exclude(username='AnonymousUser').order_by('username').annotate(
+            is_creator=Exists(
+                User.user_permissions.through.objects.filter(user_id=OuterRef('id'), permission=add_permission)
+            )
+        )
+        paginator = Paginator(users, ITEMS_PER_PAGE)
+        page_number = request.GET.get("page")
+        page = paginator.get_page(page_number)
+        new_url = request.user.has_perm('add_user') and reverse('creator_invite', args=[])
+        return render(request, 'creators.html', {
+            'page': page,
+            'new_url': new_url,
+            **template_vars,
+        })
+    elif request.method == 'POST':
+        is_creator = request.POST.get('creator')
+        is_staff = request.POST.get('staff')
+        user_id = request.POST["user_id"]
+        user = User.objects.get(pk=user_id)
+        if is_creator:
+            if is_creator == 'False':
+                user.user_permissions.add(add_permission)
+            else:
+                user.user_permissions.remove(add_permission)
+            user.save()
+        elif is_staff:
+            user.is_staff = is_staff == 'False'
+            user.save()
+        return redirect('creators')
+
+@login_required
 def dataset_managers(request, dataset_id):
     dataset, _project, template_vars = get_menu_data(request, dataset_id)
     manage_dataset_perm = dataset_id in template_vars['manage_dataset_ids']
@@ -573,7 +612,6 @@ def dataset_managers(request, dataset_id):
             manage = request.POST.get("manage")
             user = User.objects.get(pk=user_id)
             if manage:
-                # TODO: check if this is correct, and comment the logic if it is; they look switched around
                 if manage == 'False':
                     assign_perm('manage_dataset', user, dataset)
                 else:
@@ -714,13 +752,12 @@ def project_users(request, project_id):
             manage = request.POST.get("manage")
             evaluate = request.POST.get("evaluate")
             user = User.objects.get(pk=user_id)
-            # TODO: check if this is correct, and comment the logic if it is; they look switched around
             if evaluate:
                 if evaluate == 'False':
                     assign_perm('evaluate_project', user, project)
                 else:
                     remove_perm('evaluate_project', user, project)
-            if manage:
+            elif manage:
                 if manage == 'False':
                     assign_perm('manage_project', user, project)
                 else:
@@ -737,6 +774,9 @@ def invite_user(request, dataset_id=None, project_id=None):
     elif dataset_id:
         manage_dataset_perm = dataset_id in template_vars['manage_dataset_ids']
         if not manage_dataset_perm:
+            return HttpResponse('Forbidden', status=403)
+    else:
+        if not request.user.is_staff:
             return HttpResponse('Forbidden', status=403)
     if request.method in {'GET', 'HEAD'}:
         return render(request, 'invite_user.html', template_vars)
@@ -1009,13 +1049,20 @@ def accept_invite(request, key):
             messages.error(request, "The passwords do not match.")
             return HttpResponseRedirect(request.path_info)
 
+        # If neither project nor dataset are specified, the user should be staff
+        scope = invitation.project or invitation.dataset
         user = User.objects.create_user(
             username=request.POST['username'],
             email=invitation.email,
             password=password,
         )
-        scope = invitation.project or invitation.dataset
-        assign_perm(invitation.role, user, scope)
+
+        if scope:
+            assign_perm(invitation.role, user, scope)
+        else:
+            content_type = ContentType.objects.get_for_model(Dataset)
+            add_permission = Permission.objects.get(content_type=content_type, codename='add_dataset')
+            user.user_permissions.add(add_permission)
 
         login(request, user, backend='django.contrib.auth.backends.ModelBackend')
 
