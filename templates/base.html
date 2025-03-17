@@ -60,7 +60,7 @@
                     </a>
                   </li>{# dataset creators #}
                 {% endif %}
-                {% if can_add_datasets or manage_dataset_ids or manage_project_ids %}
+                {% if can_add_dataset or manage_dataset_ids or manage_project_ids %}
                   <li class="nav-item">{# datasets #}
 
                     <a class="nav-link {% if request.current_url_name == 'datasets' %}active{% endif %}" href="{% url 'datasets' %}">
