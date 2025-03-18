@@ -128,10 +128,11 @@ async def upload_video(request, dataset, credentials):
     else:
         subs_file = None
     subtitles = await StoredFile.store(subs_file, "subs_files", session, location)
-    cuts = request.FILES.get('cuts')
-    if cuts:
+    if cuts := request.FILES.get('cuts'):
         with cuts.open('rt') as r:
             cuts_data = json.load(r)
+    elif cuts := request.POST.get('cuts'):
+        cuts_data = json.loads(cuts)
     else:
         cuts_data = None
 
@@ -284,7 +285,7 @@ def datasets_new(request):
             created_by=request.user,
         )
         assign_perm('manage_dataset', request.user, dataset)
-        return redirect('dataset_videos', dataset.id)
+        return redirect('dataset_edit', dataset.id)
 
 @login_required
 def dataset_edit(request, dataset_id):
@@ -1103,15 +1104,18 @@ async def credentials(request):
         if location:
             key = 'video_eval_test_file.txt'
             body = b'Test'
-            bucket, path = location.split('/', 1)
-            if path:
+            bucket, *path_list = location.split('/', 1)
+            if path_list:
+                path = path_list[0]
                 key = f"{path}/{key}"
+            else:
+                path = ''
 
             session = make_aws_session(credentials)
             async with session.client('s3') as s3:
                 try:
                     await s3.put_object(Bucket=bucket, Key=key, Body=body, ACL='public-read')
-                except botocore.exceptions.ClientError:
+                except botocore.exceptions.ClientError as x:
                     messages.error(request, 'AWS S3 bucket does not exist or cannot be uploaded to')
                     return redirect(request.path_info)
 

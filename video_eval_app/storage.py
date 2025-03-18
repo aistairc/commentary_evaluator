@@ -68,7 +68,11 @@ async def delocalize_file(path, session, location):
     _, ext = os.path.splitext(path)
     content_type = CONTENT_TYPES.get(ext)
 
-    bucket, dir_key = location.split('/', 1)
+    bucket, *dir_list = location.split('/', 1)
+    if dir_list:
+        dir_key = dir_list[0]
+    else:
+        dir_key = ""
     key = f"{dir_key}/{path}" if dir_key else path
 
     async with session.client('s3') as s3:
@@ -93,7 +97,7 @@ async def delocalize_file(path, session, location):
 async def local_file(path, bucket, key, session):
     if bucket:
         temp_dir = default_storage.path('tmp')
-        os.path.makedirs(temp_dir, exist_ok=True)
+        os.makedirs(temp_dir, exist_ok=True)
         with NamedTemporaryFile(dir=temp_dir) as temp_file:
             temp_file.close()
             async with session.client('s3') as s3:

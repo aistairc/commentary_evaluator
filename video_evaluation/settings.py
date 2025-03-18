@@ -171,6 +171,7 @@ EXTERNAL_WORKER_ID_FIELD = {
 }
 
 INVITATIONS_INVITATION_MODEL = 'video_eval_app.Invitation'
+INVITATIONS_CONFIRMATION_URL_NAME = 'accept-invite'
 
 Q_CLUSTER = {
     'orm': 'default',

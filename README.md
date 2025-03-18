@@ -33,6 +33,8 @@ SECRET_KEY = 'some long and unguessable string, typically 60+ random printable A
 # FILE_UPLOAD_MAX_MEMORY_SIZE = 1024 * _MB
 ```
 
+You might also need to configure the variables for [Django Invitations](https://django-invitations.readthedocs.io/en/latest/configuration.html).
+
 Edit `Procfile` to choose the port.
 
 ## Finishing setup

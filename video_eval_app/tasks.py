@@ -28,27 +28,20 @@ logger = logging.getLogger(__name__)
 
 async def cut_video(video, audio, start, end, temp_mp4):
     opts = {}
-    if end:
-        opts['t'] = end - start
-
-    if audio:
-        out_map = ['0:v', '1:a']
-    else:
-        out_map = ['0']
+    t_opt = { "t": end - start } if end else {}
+    out_map = ['0:v', '1:a'] if audio else ['0']
 
     ffmpeg = FFmpeg()
     ffmpeg = ffmpeg.input(
         video,
-        ss=start,
-        **opts,
     )
     if audio:
         ffmpeg = ffmpeg.input(
             audio,
-            ss=start,
-            **opts,
         )
         out_opts = {
+            "ss": start,
+            **t_opt,
             "c:v": "copy",
             "c:a": "aac",
         }
