@@ -27,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 
 async def cut_video(video, audio, start, end, temp_mp4):
-    opts = {}
     t_opt = { "t": end - start } if end else {}
     out_map = ['0:v', '1:a'] if audio else ['0']
 
@@ -54,6 +53,8 @@ async def cut_video(video, audio, start, end, temp_mp4):
         ffmpeg = ffmpeg.output(
             temp_mp4.name,
             map=out_map,
+            ss=start,
+            **t_opt,
             c='copy',
         )
     # import shlex; print(' '.join(shlex.quote(arg) for arg in ffmpeg.arguments))
