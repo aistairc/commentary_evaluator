@@ -784,15 +784,31 @@ def invite_user(request, dataset_id=None, project_id=None):
     elif request.method == 'POST':
         role = request.POST['role']
         email = request.POST['email']
-        invitation = Invitation.objects.filter(email__iexact=email).last()
-        if invitation:
-            pass # TODO: refuse to send duplicate invitation
-        invitation = Invitation.create(email=email, role=role, dataset=dataset, project=project)
-        invitation.send_invitation(request)
+        user = User.objects.filter(email__iexact=email).first()
+        if user:
+            if project_id:
+                assign_perm(role, user, project)
+            elif dataset_id:
+                assign_perm(role, user, dataset)
+            else:
+                content_type = ContentType.objects.get_for_model(Dataset)
+                add_permission = Permission.objects.get(content_type=content_type, codename='add_dataset')
+                user.user_permissions.add(add_permission)
+            messages.warning(request, "The user with that email is already registered; an invitation was not sent.")
+            messages.success(request, "The requested role was assigned.")
+        else:
+            num_deleted, _ = Invitation.objects.filter(email__iexact=email).delete()
+            if num_deleted:
+                messages.warning(request, "An older invitation for the same email was deleted.")
+            messages.success(request, "An invitation was sent.")
+            invitation = Invitation.create(email=email, role=role, dataset=dataset, project=project)
+            invitation.send_invitation(request)
         if project_id:
             return redirect('project_users', project_id=project_id)
-        else:
+        elif dataset_id:
             return redirect('dataset_managers', dataset_id=dataset_id)
+        else:
+            return redirect('creators')
 
 @login_required
 def segment(request, segment_id):
