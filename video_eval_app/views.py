@@ -645,7 +645,9 @@ def dataset_managers(request, dataset_id):
 @login_required
 def project_approvals(request, project_id):
     dataset, project, template_vars = get_menu_data(request, None, project_id)
-    # TODO: check permissions
+    manage_project_perm = project_id in template_vars['manage_project_ids']
+    if not manage_project_perm:
+        return HttpResponse('Forbidden', status=403)
     assignments = Assignment.objects.filter(task__project=project).order_by('task__segment__dataset_video__name', 'task__segment__start')
     paginator = Paginator(assignments, ITEMS_PER_PAGE)
     page_number = request.GET.get("page")
@@ -691,7 +693,9 @@ async def assignment_approve_all(request, project_id):
 async def assignment(request, assignment_id):
     assignment = await Assignment.objects.filter(pk=assignment_id).prefetch_related('task__project__dataset').afirst()
     dataset, project, template_vars = await aget_menu_data(request, assignment=assignment)
-    # TODO: check permissions
+    manage_project_perm = assignment.task.project.id in template_vars['manage_project_ids']
+    if not manage_project_perm:
+        return HttpResponse('Forbidden', status=403)
     if request.method == 'POST':
         feedback = request.POST.get('feedback')
         feedback_opt = {}
@@ -882,7 +886,11 @@ def project_eval(request, project_id):
 @require_POST
 def task_eval_submit(request, task_id):
     task = Task.objects.get(pk=task_id)
-    # TODO: check permissions
+    dataset, project, template_vars = get_menu_data(request, None, task.project.id)
+    project_id = task.project.id
+    has_eval_perm = project_id in template_vars['evaluate_project_ids']
+    if not has_eval_perm:
+        return HttpResponse('Forbidden', status=403)
     result = convert_answers(task.project.questions, request=request)
     Assignment.objects.create(
         task=task,
