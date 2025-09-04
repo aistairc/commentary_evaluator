@@ -1,6 +1,5 @@
 from json import load
 from django.contrib.auth.decorators import sync_to_async
-from icecream import ic # DEBUG:
 
 from hashlib import md5
 from tempfile import NamedTemporaryFile
@@ -34,34 +33,28 @@ async def cut_video(video, audio, start, end, temp_mp4):
     ffmpeg = ffmpeg.input(
         video,
     )
+    copy_opts = {
+        'c:v': 'libx264'
+    }
     if audio:
         ffmpeg = ffmpeg.input(
             audio,
         )
-        out_opts = {
-            "ss": start,
-            **t_opt,
-            "c:v": "copy",
-            "c:a": "aac",
-        }
-        ffmpeg = ffmpeg.output(
-            temp_mp4.name,
-            map=out_map,
-            **out_opts,
-        )
+        copy_opts['c:a'] = 'aac'
+        out_map = ['0:v', '1:a']
     else:
-        ffmpeg = ffmpeg.output(
-            temp_mp4.name,
-            map=out_map,
-            ss=start,
-            **t_opt,
-            c='copy',
-        )
+        out_map = ['0']
+    ffmpeg = ffmpeg.output(
+        temp_mp4.name,
+        map=out_map,
+        ss=start,
+        **t_opt,
+        **copy_opts
+    )
     # import shlex; print(' '.join(shlex.quote(arg) for arg in ffmpeg.arguments))
     await ffmpeg.execute()
-    # print("done")
 
-    file_path = Path(temp_mp4.name).relative_to(settings.MEDIA_ROOT)
+    # file_path = Path(temp_mp4.name).relative_to(settings.MEDIA_ROOT)
     file = File(file=open(temp_mp4.name, 'rb'), name="dummy.mp4")
     return file
 
