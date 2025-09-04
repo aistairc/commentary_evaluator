@@ -56,6 +56,12 @@ ITEMS_PER_PAGE = 10
 
 class NoCredentialsError(Exception): pass
 
+
+class JsonResponseWithNewline(JsonResponse):
+    def __init__(self, data, **kwargs):
+        super().__init__(data, **kwargs)
+        self.content += b"\n"
+
 ffmpeg_queue = AsyncQueue()
 
 arender = sync_to_async(render)
@@ -146,6 +152,7 @@ async def upload_video(request, dataset, credentials):
         cuts=cuts_data,
     )
     await ffmpeg_queue(cut_and_delocalize_video, dataset_video, session, location)
+    return dataset_video
 
 
 def bulk_remove_perm(perm, query, obj):
@@ -313,12 +320,21 @@ async def upload_video_api(request, token):
     try:
         credentials = await get_request_credentials(request)
         dataset = await Dataset.objects.aget(token=token)
-        await upload_video(request, dataset, credentials)
-        return HttpResponse(status=204)
+        dataset_video = await upload_video(request, dataset, credentials)
+        return JsonResponseWithNewline({"dataset_video_id": dataset_video.id})
     except Dataset.DoesNotExist:
-        return HttpResponse("Invalid token.\n", status=403)
-    # except IntegrityError:
-    #     return HttpResponse("This video is already in this dataset.\n", status=400)
+        return JsonResponseWithNewline({"error": "Invalid token"}, status=403)
+    except IntegrityError as e:
+        return JsonResponseWithNewline({"error": "This video is already in this dataset"}, status=400)
+    except Exception as e:
+        if settings.DEBUG:
+            import traceback
+            return JsonResponseWithNewline({
+                "error": str(e),
+                "traceback": traceback.format_exc()
+            }, status=500)
+        else:
+            return JsonResponseWithNewline({"error": "An error occurred while uploading the video"}, status=500)
 
 @login_required
 @require_safe
