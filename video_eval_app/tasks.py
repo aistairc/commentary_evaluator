@@ -8,6 +8,7 @@ from io import BytesIO
 import logging
 import copy
 import os
+import asyncio
 from contextlib import nullcontext
 
 from ffmpeg.asyncio import FFmpeg # https://github.com/jonghwanhyeon/python-ffmpeg
@@ -52,7 +53,30 @@ async def cut_video(video, audio, start, end, temp_mp4):
         **copy_opts
     )
     # import shlex; print(' '.join(shlex.quote(arg) for arg in ffmpeg.arguments))
-    await ffmpeg.execute()
+    try:
+        # Execute with configurable timeout
+        await asyncio.wait_for(ffmpeg.execute(), timeout=settings.FFMPEG_TIMEOUT)
+        
+        # Verify output file was created and has reasonable size
+        if not os.path.exists(temp_mp4.name):
+            raise RuntimeError("FFmpeg completed but output file was not created")
+        
+        file_size = os.path.getsize(temp_mp4.name)
+        if file_size == 0:
+            raise RuntimeError("FFmpeg produced empty output file")
+        
+        logger.info(f"FFmpeg success: created {file_size} byte file")
+        
+    except asyncio.TimeoutError:
+        logger.error(f"FFmpeg timeout after {settings.FFMPEG_TIMEOUT} seconds")
+        raise RuntimeError(f"Video processing timeout after {settings.FFMPEG_TIMEOUT} seconds")
+    
+    except Exception as e:
+        logger.error(f"FFmpeg failed: {str(e)}")
+        # Clean up partial output
+        if os.path.exists(temp_mp4.name):
+            os.unlink(temp_mp4.name)
+        raise RuntimeError(f"Video processing failed: {str(e)}")
 
     # file_path = Path(temp_mp4.name).relative_to(settings.MEDIA_ROOT)
     file = File(file=open(temp_mp4.name, 'rb'), name="dummy.mp4")

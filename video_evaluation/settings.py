@@ -203,6 +203,9 @@ S3_CORS_RULES = [{
 
 SQLITE3_BUSY_TIMEOUT = 2000
 
+# FFmpeg processing timeout in seconds
+FFMPEG_TIMEOUT = 600  # 10 minutes
+
 
 if importlib.util.find_spec("django_extensions"):
     INSTALLED_APPS.append('django_extensions')
