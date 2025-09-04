@@ -51,10 +51,19 @@ def store_file(file, subdir, session, location):
             temp_file.write(chunk)
             md5_hash.update(chunk)
         h = md5_hash.hexdigest()
+    
     path = os.path.join(subdir, md5_file_name(file.name, h))
     real_path = default_storage.path(path)
-    os.makedirs(os.path.dirname(real_path), exist_ok=True)
-    shutil.move(temp_file.name, real_path)
+    
+    try:
+        os.makedirs(os.path.dirname(real_path), exist_ok=True)
+        shutil.move(temp_file.name, real_path)
+    except Exception as e:
+        # Clean up temp file if move fails
+        if os.path.exists(temp_file.name):
+            os.unlink(temp_file.name)
+        raise e
+    
     return file.name, path, h
 
 async def delocalize_file(path, session, location):
