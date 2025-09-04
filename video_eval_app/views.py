@@ -384,8 +384,20 @@ async def dataset_video(request, dataset_id, dataset_video_id=None):
             **template_vars,
         })
     elif request.method == 'POST':
-        await upload_video(request, dataset, request.credentials)
-        return redirect('dataset_videos', dataset_id=dataset.id)
+        try:
+            await upload_video(request, dataset, request.credentials)
+            return redirect('dataset_videos', dataset_id=dataset.id)
+        except Exception as e:
+            logger.error(f"Failed to upload video for dataset {dataset_id}: {str(e)}")
+            messages.error(request, "Failed to upload video. Please try again.")
+            # Re-render the form with error message
+            dataset_video = DatasetVideo(dataset=dataset)
+            return await arender(request, 'dataset_video.html', {
+                'editable': manage_dataset_perm,
+                'dataset_video': dataset_video,
+                'page': None,
+                **template_vars,
+            })
 
 @login_required
 @require_safe

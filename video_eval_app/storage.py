@@ -87,9 +87,18 @@ async def delocalize_file(path, session, location):
             }
             try:
                 await s3.upload_file(real_path, bucket, key, ExtraArgs=extra_args)
-            except boto3.exceptions.S3UploadFailedError:
-                print("S3 upload failed") # TODO: handle better?
-                return
+            except boto3.exceptions.S3UploadFailedError as e:
+                logger.error(f"S3 upload failed for {key} to bucket {bucket}: {str(e)}")
+                # Clean up local file since upload failed
+                os.unlink(real_path)
+                raise RuntimeError(f"Failed to upload file to S3: {str(e)}")
+            except Exception as e:
+                logger.error(f"Unexpected error during S3 upload for {key}: {str(e)}")
+                # Clean up local file since upload failed
+                os.unlink(real_path)
+                raise RuntimeError(f"File upload failed: {str(e)}")
+    
+    # Delete local file - either upload succeeded or file already existed on S3
     os.unlink(real_path)
     return bucket, key
 
