@@ -287,11 +287,18 @@ def datasets_new(request):
         return render(request, 'datasets_new.html', template_vars)
     elif request.method == 'POST':
         name = request.POST['name']
-        dataset = Dataset.objects.create(
-            name=name,
-            created_by=request.user,
-        )
-        assign_perm('manage_dataset', request.user, dataset)
+        try:
+            with transaction.atomic():
+                dataset = Dataset.objects.create(
+                    name=name,
+                    created_by=request.user,
+                )
+                assign_perm('manage_dataset', request.user, dataset)
+        except Exception as e:
+            logger.error(f"Failed to create dataset '{name}' for user {request.user.id}: {str(e)}")
+            messages.error(request, "Unable to create dataset. Please try again.")
+            return render(request, 'datasets_new.html', template_vars)
+        
         return redirect('dataset_edit', dataset.id)
 
 @login_required
@@ -813,12 +820,19 @@ def invite_user(request, dataset_id=None, project_id=None):
             messages.warning(request, "The user with that email is already registered; an invitation was not sent.")
             messages.success(request, "The requested role was assigned.")
         else:
-            num_deleted, _ = Invitation.objects.filter(email__iexact=email).delete()
-            if num_deleted:
-                messages.warning(request, "An older invitation for the same email was deleted.")
-            messages.success(request, "An invitation was sent.")
-            invitation = Invitation.create(email=email, role=role, dataset=dataset, project=project)
-            invitation.send_invitation(request)
+            try:
+                with transaction.atomic():
+                    num_deleted, _ = Invitation.objects.filter(email__iexact=email).delete()
+                    invitation = Invitation.create(email=email, role=role, dataset=dataset, project=project)
+                    invitation.send_invitation(request)
+                
+                if num_deleted:
+                    messages.warning(request, "An older invitation for the same email was deleted.")
+                messages.success(request, "An invitation was sent.")
+            except Exception as e:
+                logger.error(f"Failed to create invitation for {email}: {str(e)}")
+                messages.error(request, "Unable to send invitation. Please try again.")
+                return HttpResponseRedirect(request.path_info)
         if project_id:
             return redirect('project_users', project_id=project_id)
         elif dataset_id:
@@ -1084,23 +1098,32 @@ def accept_invite(request, key):
 
         # If neither project nor dataset are specified, the user should be staff
         scope = invitation.project or invitation.dataset
-        user = User.objects.create_user(
-            username=request.POST['username'],
-            email=invitation.email,
-            password=password,
-        )
+        try:
+            with transaction.atomic():
+                user = User.objects.create_user(
+                    username=request.POST['username'],
+                    email=invitation.email,
+                    password=password,
+                )
 
-        if scope:
-            assign_perm(invitation.role, user, scope)
-        else:
-            content_type = ContentType.objects.get_for_model(Dataset)
-            add_permission = Permission.objects.get(content_type=content_type, codename='add_dataset')
-            user.user_permissions.add(add_permission)
+                if scope:
+                    assign_perm(invitation.role, user, scope)
+                else:
+                    content_type = ContentType.objects.get_for_model(Dataset)
+                    add_permission = Permission.objects.get(content_type=content_type, codename='add_dataset')
+                    user.user_permissions.add(add_permission)
+
+                invitation.accepted = True
+                invitation.save()
+        except Exception as e:
+            logger.error(f"Failed to create user account for invitation {invitation.id}: {str(e)}")
+            messages.error(request, "Unable to create user account. Please try again or contact support.")
+            return render(request, 'invite_signup.html', {
+                'invitation': invitation,
+                'key': key,
+            })
 
         login(request, user, backend='django.contrib.auth.backends.ModelBackend')
-
-        invitation.accepted = True
-        invitation.save()
 
         return redirect('index')
 
