@@ -2,8 +2,6 @@ import asyncio
 import atexit
 import threading
 
-from icecream import ic
-
 
 async def _set_result(result_future, result):
     result_future.set_result(result)
@@ -20,13 +18,15 @@ class AsyncQueue:
 
         self.thread.start()
         for ix in range(num_workers):
-            asyncio.run_coroutine_threadsafe(self.worker(ix), self.loop)
+            asyncio.run_coroutine_threadsafe(self._worker(ix), self.loop)
+
+        atexit.register(self.shutdown)
 
     def _start_loop(self):
         asyncio.set_event_loop(self.loop)
         self.loop.run_forever()
 
-    async def worker(self, ix):
+    async def _worker(self, ix):
         while not self.shutdown_event.is_set():
             try:
                 func, args, kwargs, result_future = await asyncio.wait_for(self.queue.get(), timeout=0.1)
@@ -48,7 +48,7 @@ class AsyncQueue:
         result = await result_future
         return result
 
-    async def shutdown(self):
+    def shutdown(self):
         self.shutdown_event.set()  # Signal shutdown
         self.loop.call_soon_threadsafe(self.loop.stop)  # Stop the event loop
         self.thread.join()  # Wait for the thread to finish
