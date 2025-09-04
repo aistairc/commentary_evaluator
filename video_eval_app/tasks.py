@@ -109,12 +109,15 @@ async def cut_dataset_video(dataset_video, session, location):
                 mp4_file = await cut_video(video_path, audio_path, start, end, temp_mp4)
             seg_subtitles = cut_subtitles(subtitles, start, end, temp_vtt)
             video_file = await StoredFile.store(mp4_file, "video_files", session, location)
+            mp4_file.close()
             subs_file = await StoredFile.store(seg_subtitles, "subs_files", session, location)
+            if seg_subtitles:
+                seg_subtitles.close()
             await video_file.delocalize(session, location)
             if subs_file:
                 await subs_file.delocalize(session, location)
 
-            segment = await Segment.objects.acreate(
+            await Segment.objects.acreate(
                 dataset_video=dataset_video,
                 video=video_file,
                 start=start,
