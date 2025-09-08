@@ -4,6 +4,16 @@ import json
 from schema import Schema, And, Or, Use, Optional, SchemaError
 
 
+# Custom validation exceptions
+class CredentialValidationError(ValueError):
+    """Raised when credential validation fails (not JSON parsing)"""
+    pass
+
+class JSONParseError(ValueError):
+    """Raised when JSON parsing fails"""
+    pass
+
+
 credentials_schema = Schema({
     'AccessKeyId': Use(str),
     'SecretAccessKey': Use(str),
@@ -70,12 +80,30 @@ questions_schema = Schema([
     },
 ])
 
+cuts_schema = Schema([
+    Or(
+        [Or(Use(int), Use(float))],  # Single element: [start]
+        [Or(Use(int), Use(float)), Or(Use(int), Use(float))]  # Two elements: [start, end]
+    )
+])
+
+def parse_cuts(cuts_text):
+    cuts = json.loads(cuts_text)
+    return cuts_schema.validate(cuts)
+
 def parse_credentials(credentials_text):
-    credentials = json.loads(credentials_text)
-    Schema(dict).validate(credentials)
-    if 'Credentials' in credentials:
-        credentials = credentials['Credentials']
-    return credentials_schema.validate(credentials)
+    try:
+        credentials = json.loads(credentials_text)
+    except json.JSONDecodeError:
+        raise JSONParseError("AWS credentials are not valid JSON")
+    
+    try:
+        Schema(dict).validate(credentials)
+        if 'Credentials' in credentials:
+            credentials = credentials['Credentials']
+        return credentials_schema.validate(credentials)
+    except SchemaError as x:
+        raise CredentialValidationError(f"AWS credentials validation failed: {x}")
 
 def parse_hit_type(hit_type_text):
     hit_type = json.loads(hit_type_text)

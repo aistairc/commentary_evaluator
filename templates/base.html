@@ -133,7 +133,7 @@
                             {% if request.credentials %}
                               <div class="text-{% if request.current_url_name == 'credentials' %}white{% else %}dark{% endif %}">
                                 {% if request.credentials.Expiration %}
-                                  ({{request.credentials.Expiration|parsedate|timeuntil}})
+                                  ({{request.credentials.Expiration|timeuntil}})
                                 {% else %}
                                   (Permanent)
                                 {% endif %}

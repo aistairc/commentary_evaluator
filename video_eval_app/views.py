@@ -43,7 +43,7 @@ from .models import *
 from .tasks import get_assignments_from_mturk, post_project_to_mturk, cut_and_delocalize_video
 from .mturk import MTurk, make_aws_session
 from .utils import convert_answers, load_subtitles
-from .json_schemata import parse_hit_type, parse_credentials, parse_questions
+from .json_schemata import parse_hit_type, parse_credentials, parse_questions, parse_cuts, CredentialValidationError, JSONParseError
 from .async_queue import AsyncQueue
 
 
@@ -77,14 +77,10 @@ async def get_request_credentials(request):
     else:
         raw_credentials = request.POST.get('credentials')
     if raw_credentials:
-        try:
-            credentials = json.loads(raw_credentials)
-        except json.decoder.JSONDecodeError:
-            raise ValueError("AWS credentials are not a valid JSON")
+        # Parse and validate using schema - exceptions will be propagated
+        credentials = parse_credentials(raw_credentials)
     else:
         return None
-    if 'Credentials' in credentials:
-        credentials = credentials['Credentials']
 
     location = request.POST.get('location')
     if location:
@@ -108,7 +104,14 @@ async def get_request_credentials(request):
                     cors_rules.append(item)
                     changed = True
             if changed:
-                await s3.put_bucket_cors(Bucket=bucket, CORSConfiguration=cors)
+                try:
+                    await s3.put_bucket_cors(Bucket=bucket, CORSConfiguration=cors)
+                except botocore.exceptions.ClientError as x:
+                    # Check for expired token specifically
+                    if 'ExpiredToken' in str(x):
+                        raise CredentialValidationError("AWS credentials have expired. Please upload fresh credentials.")
+                    else:
+                        raise CredentialValidationError(f"AWS S3 CORS configuration failed: {x}")
 
     return credentials
 
@@ -135,10 +138,16 @@ async def upload_video(request, dataset, credentials):
         subs_file = None
     subtitles = await StoredFile.store(subs_file, "subs_files", session, location)
     if cuts := request.FILES.get('cuts'):
-        with cuts.open('rt') as r:
-            cuts_data = json.load(r)
+        try:
+            with cuts.open('rt') as r:
+                cuts_data = parse_cuts(r.read())
+        except Exception as x:
+            raise ValueError(f"Cuts file validation failed: {x}")
     elif cuts := request.POST.get('cuts'):
-        cuts_data = json.loads(cuts)
+        try:
+            cuts_data = parse_cuts(cuts)
+        except Exception as x:
+            raise ValueError(f"Cuts data validation failed: {x}")
     else:
         cuts_data = None
 
@@ -166,11 +175,23 @@ def bulk_remove_perm(perm, query, obj):
 
 
 def set_perm_to_user_list(request, perm, obj):
-    usernames = [username.strip() for username in request.POST[perm].split(',')]
+    usernames = [username.strip() for username in request.POST[perm].split(',') if username.strip()]
+    if not usernames:
+        with transaction.atomic():
+            bulk_remove_perm(perm, User.objects.all(), obj)
+        return
+    
+    # Validate all usernames exist
+    existing_users = User.objects.filter(username__in=usernames)
+    existing_usernames = set(existing_users.values_list('username', flat=True))
+    invalid_usernames = [u for u in usernames if u not in existing_usernames]
+    
+    if invalid_usernames:
+        raise ValueError(f"Invalid usernames: {', '.join(invalid_usernames)}")
+    
     with transaction.atomic():
         bulk_remove_perm(perm, User.objects.all(), obj)
-        if usernames[0]:
-            assign_perm(perm, User.objects.filter(username__in=usernames), obj)
+        assign_perm(perm, existing_users, obj)
 
 def get_user_list_for_perm(perms, perm):
     return ', '.join(sorted(
@@ -331,6 +352,8 @@ async def upload_video_api(request, token):
         return JsonResponseWithNewline({"dataset_video_id": dataset_video.id})
     except Dataset.DoesNotExist:
         return JsonResponseWithNewline({"error": "Invalid token"}, status=403)
+    except (JSONParseError, CredentialValidationError) as x:
+        return JsonResponseWithNewline({"error": str(x)}, status=400)
     except IntegrityError as e:
         return JsonResponseWithNewline({"error": "This video is already in this dataset"}, status=400)
     except Exception as e:
@@ -642,7 +665,11 @@ def dataset_managers(request, dataset_id):
         })
     elif request.method == 'POST':
         if 'manage_dataset' in request.POST:
-            set_perm_to_user_list(request, 'manage_dataset', dataset)
+            try:
+                set_perm_to_user_list(request, 'manage_dataset', dataset)
+                messages.success(request, "Dataset permissions updated successfully")
+            except ValueError as x:
+                messages.error(request, str(x))
         else:
             user_id = request.POST["user_id"]
             manage = request.POST.get("manage")
@@ -785,8 +812,12 @@ def project_users(request, project_id):
         })
     elif request.method == 'POST':
         if 'evaluate_project' in request.POST:
-            set_perm_to_user_list(request, 'evaluate_project', project)
-            set_perm_to_user_list(request, 'manage_project', project)
+            try:
+                set_perm_to_user_list(request, 'evaluate_project', project)
+                set_perm_to_user_list(request, 'manage_project', project)
+                messages.success(request, "Project permissions updated successfully")
+            except ValueError as x:
+                messages.error(request, str(x))
         else:
             user_id = request.POST["user_id"]
             manage = request.POST.get("manage")
@@ -1154,7 +1185,12 @@ async def credentials(request):
         location = ''
         if request.credentials:
             location = request.credentials.pop('Location', '')
-        credentials_text = SafeString(json.dumps(request.credentials, indent=4)) if request.credentials else ''
+            # Convert datetime objects to strings for JSON serialization
+            credentials_for_display = request.credentials.copy()
+            if expiration := credentials_for_display.get('Expiration'):
+                if not isinstance(expiration, str):
+                    credentials_for_display['Expiration'] = expiration.isoformat()
+        credentials_text = SafeString(json.dumps(credentials_for_display, indent=4)) if request.credentials else ''
         return await arender(request, 'credentials.html', {
             "credentials": credentials_text,
             "location": location,
@@ -1163,16 +1199,19 @@ async def credentials(request):
     elif request.method == 'POST':
         try:
             credentials = await get_request_credentials(request)
-        except ValueError:
-            messages.error(request, 'The credentials are not a valid JSON')
+        except (JSONParseError, CredentialValidationError) as x:
+            messages.error(request, str(x))
             return redirect(request.path_info)
 
         try:
             mturk = MTurk(credentials)
             async with mturk.connect() as client:
                 await mturk.get_account_balance()
-        except botocore.exceptions.ClientError:
-            messages.error(request, 'AWS could not use the credentials')
+        except botocore.exceptions.ClientError as x:
+            if 'ExpiredToken' in str(x):
+                messages.error(request, 'AWS credentials have expired. Please upload fresh credentials.')
+            else:
+                messages.error(request, 'AWS could not use the credentials')
             return redirect(request.path_info)
 
         location = credentials.get("Location")
@@ -1195,11 +1234,17 @@ async def credentials(request):
                     return redirect(request.path_info)
 
         expiration = credentials.get('Expiration')
-        if expiration:
+        if expiration and isinstance(expiration, str):
             expiration = datetime.fromisoformat(expiration)
+        # If expiration is already a datetime object, use it as-is
 
-        response = redirect('index')
-        response.set_cookie(settings.CREDENTIALS_COOKIE_NAME, json.dumps(credentials),
+        # Convert datetime back to string for JSON serialization
+        credentials_for_cookie = credentials.copy()
+        if expiration and not isinstance(expiration, str):
+            credentials_for_cookie['Expiration'] = expiration.isoformat()
+
+        response = redirect('datasets')
+        response.set_cookie(settings.CREDENTIALS_COOKIE_NAME, json.dumps(credentials_for_cookie),
             expires=expiration, httponly=True,
         )
         return response
