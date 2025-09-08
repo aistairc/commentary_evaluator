@@ -1,6 +1,9 @@
 import asyncio
 import atexit
 import threading
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 async def _set_result(result_future, result):
@@ -15,10 +18,17 @@ class AsyncQueue:
         self.queue = asyncio.Queue()
         self.thread = threading.Thread(target=self._start_loop, daemon=True)
         self.shutdown_event = threading.Event()
+        self.num_workers = num_workers
+        self.worker_tasks = []
+
 
         self.thread.start()
         for ix in range(num_workers):
-            asyncio.run_coroutine_threadsafe(self._worker(ix), self.loop)
+            task = asyncio.run_coroutine_threadsafe(self._worker(ix), self.loop)
+            self.worker_tasks.append(task)
+
+        # Start worker monitor
+        asyncio.run_coroutine_threadsafe(self._monitor_workers(), self.loop)
 
         atexit.register(self.shutdown)
 
@@ -27,19 +37,45 @@ class AsyncQueue:
         self.loop.run_forever()
 
     async def _worker(self, ix):
-        while not self.shutdown_event.is_set():
-            try:
-                func, args, kwargs, result_future = await asyncio.wait_for(self.queue.get(), timeout=0.1)
-                future_loop = result_future.get_loop()
+        logger.info(f"AsyncQueue worker {ix} starting")
+        try:
+            while not self.shutdown_event.is_set():
                 try:
-                    result = await func(*args, **kwargs)
-                    asyncio.run_coroutine_threadsafe(_set_result(result_future, result), future_loop)
-                except Exception as x:
-                    asyncio.run_coroutine_threadsafe(_set_exception(result_future, x), future_loop)
-                finally:
-                    self.queue.task_done()
-            except asyncio.TimeoutError:
-                pass # just try again
+                    func, args, kwargs, result_future = await asyncio.wait_for(self.queue.get(), timeout=0.1)
+                    future_loop = result_future.get_loop()
+                    try:
+                        result = await func(*args, **kwargs)
+                        asyncio.run_coroutine_threadsafe(_set_result(result_future, result), future_loop)
+                    except Exception as x:
+                        asyncio.run_coroutine_threadsafe(_set_exception(result_future, x), future_loop)
+                    finally:
+                        self.queue.task_done()
+                except asyncio.TimeoutError:
+                    pass # just try again
+        except Exception as x:
+            logger.error(f"AsyncQueue worker {ix} crashed with exception: {x}")
+            raise
+        finally:
+            logger.info(f"AsyncQueue worker {ix} exiting")
+
+    async def _monitor_workers(self):
+        """Monitor worker tasks and restart failed ones"""
+        while not self.shutdown_event.is_set():
+            await asyncio.sleep(1.0)  # Check every second
+            
+            for ix, task in enumerate(self.worker_tasks):
+                if task.done():
+                    try:
+                        # Check if task completed with an exception
+                        task.result()  # This will raise if the task failed
+                        logger.info(f"AsyncQueue worker {ix} completed normally")
+                    except Exception as x:
+                        logger.error(f"AsyncQueue worker {ix} failed: {x}")
+                        
+                        # Restart the failed worker
+                        logger.info(f"Restarting AsyncQueue worker {ix}")
+                        new_task = asyncio.run_coroutine_threadsafe(self._worker(ix), self.loop)
+                        self.worker_tasks[ix] = new_task
 
     async def __call__(self, func, *args, **kwargs):
         result_future = asyncio.Future()
