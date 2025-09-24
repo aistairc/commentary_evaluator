@@ -12,6 +12,7 @@
           <th scope="col">ID</th>
           <th scope="col">Name</th>
           <th scope="col">MTurk</th>
+          <th scope="col">Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -31,6 +32,13 @@
                   fa-xmark
                 {% endif %}
               "></i>
+            </td>
+            <td>
+              {% if project.id in manage_project_ids %}
+              <a href="{% url 'delete_project' dataset.id project.id %}" class="btn btn-danger btn-sm">
+                <i class="fa fa-trash"></i> Delete
+              </a>
+              {% endif %}
             </td>
           </tr>
         {% endfor %}

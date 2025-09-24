@@ -10,6 +10,7 @@
       <tr>
         <th scope="col">ID</th>
         <th scope="col">Name</th>
+        <th scope="col">Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -20,6 +21,25 @@
             <a href="{% url "dataset_video" dataset.id dataset_video.id %}">
               {{ dataset_video.name }}
             </a>
+          </td>
+          <td>
+            {% if editable %}
+              {% if dataset_video.is_cut %}
+                {% if dataset_video.has_nonowned_files_for_user %}
+                <a href="{% url 'delete_dataset_video' dataset.id dataset_video.id %}" class="btn btn-warning btn-sm">
+                  <i class="fa fa-users"></i> Delete
+                </a>
+                {% else %}
+                <a href="{% url 'delete_dataset_video' dataset.id dataset_video.id %}" class="btn btn-danger btn-sm">
+                  <i class="fa fa-trash"></i> Delete
+                </a>
+                {% endif %}
+              {% else %}
+                <span class="btn btn-secondary btn-sm" disabled>
+                  <i class="fa fa-spinner fa-spin"></i> Processing...
+                </span>
+              {% endif %}
+            {% endif %}
           </td>
         </tr>
       {% endfor %}

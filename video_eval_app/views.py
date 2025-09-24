@@ -71,6 +71,8 @@ def auser_has_perm(request, perm, obj):
     return request.user.has_perm(perm, obj)
 
 
+
+
 async def get_request_credentials(request):
     if file_credentials := request.FILES.get('credentials'):
         raw_credentials = file_credentials.read().decode()
@@ -116,7 +118,7 @@ async def get_request_credentials(request):
     return credentials
 
 
-async def upload_video(request, dataset, credentials):
+async def upload_video(request, dataset, credentials, user=None):
     location = credentials and credentials.pop('Location')
     session = None
     if location:
@@ -125,8 +127,9 @@ async def upload_video(request, dataset, credentials):
         else:
             raise NoCredentialsError("S3 location has been requested but no AWS credentials were supplied")
 
-    video = await StoredFile.store(request.FILES["file"], "video_files", session, location)
-    audio = await StoredFile.store(request.FILES.get("audio"), "audio_files", session, location)
+    file_user = user or request.user
+    video = await StoredFile.store(request.FILES["file"], "video_files", session, location, created_by=file_user)
+    audio = await StoredFile.store(request.FILES.get("audio"), "audio_files", session, location, created_by=file_user)
     if raw_subtitles_file := request.FILES.get('subtitles'):
         with raw_subtitles_file.open('rb') as r:
             raw_subs = r.read()
@@ -136,7 +139,7 @@ async def upload_video(request, dataset, credentials):
         subs_file = File(file=BytesIO(subs.content.encode()), name=subs_name)
     else:
         subs_file = None
-    subtitles = await StoredFile.store(subs_file, "subs_files", session, location)
+    subtitles = await StoredFile.store(subs_file, "subs_files", session, location, created_by=file_user)
     if cuts := request.FILES.get('cuts'):
         try:
             with cuts.open('rt') as r:
@@ -290,6 +293,11 @@ def datasets(request):
     paginator = Paginator(datasets, ITEMS_PER_PAGE)
     page_number = request.GET.get("page")
     page = paginator.get_page(page_number)
+
+    # Add ownership information as dynamic attributes on dataset objects
+    for dataset in page.object_list:
+        dataset.has_nonowned_files_for_user = dataset.has_nonowned_files(request.user)
+
     add_dataset_perm = request.user.has_perm('video_eval_app.add_dataset')
     new_url = add_dataset_perm and request.user.is_authenticated and reverse('datasets_new')
     return render(request, 'datasets.html', {
@@ -329,7 +337,10 @@ def dataset_edit(request, dataset_id):
     if not manage_dataset_perm:
         return HttpResponse('Forbidden', status=403)
     if request.method in {"GET", "HEAD"}:
-        upload_video_url = request.user.is_authenticated and request.build_absolute_uri(reverse('upload_video_api', args=[dataset.token]))
+        upload_video_url = request.build_absolute_uri(reverse('upload_video_api', args=[request.user.profile.upload_token, dataset.id]))
+        # Pre-calculate ownership information
+        dataset.has_nonowned_files_for_user = dataset.has_nonowned_files(request.user)
+
         return render(request, 'dataset_edit.html', {
             'editable': manage_dataset_perm,
             'upload_video_url': manage_dataset_perm and upload_video_url,
@@ -338,20 +349,179 @@ def dataset_edit(request, dataset_id):
     elif request.method == 'POST':
         dataset.name = request.POST['name']
         if request.POST['renew'] == '1':
-            dataset.renew_token()
+            request.user.profile.renew_upload_token()
         dataset.save()
         return redirect(request.path_info)
 
+@login_required
+async def delete_dataset(request, dataset_id):
+    """Delete dataset with file ownership checks"""
+    dataset, _project, template_vars = await aget_menu_data(request, dataset_id)
+    manage_dataset_perm = dataset_id in template_vars['manage_dataset_ids']
+    if not manage_dataset_perm:
+        return HttpResponse('Forbidden', status=403)
+
+    if request.method == 'POST':
+        # Check if dataset has videos still being processed
+        if not await sync_to_async(dataset.is_cut)():
+            messages.error(request, 'Cannot delete dataset while videos are still being processed. Please wait for processing to complete.')
+            return redirect('dataset_edit', dataset_id=dataset_id)
+
+        session = None
+        if request.credentials:
+            from .mturk import make_aws_session
+            session = make_aws_session(request.credentials)
+
+        success, error, failed_files = await dataset.safe_delete_with_files(session)
+
+        if success:
+            messages.success(request, f'Dataset "{dataset.name}" deleted successfully')
+            return redirect('datasets')
+        else:
+            messages.error(request, error)
+            return redirect('dataset_edit', dataset_id=dataset_id)
+
+    # GET request - show confirmation
+    has_nonowned = await sync_to_async(dataset.has_nonowned_files)(request.user)
+    return await arender(request, 'delete_dataset.html', {
+        'has_nonowned_files': has_nonowned,
+        **template_vars,
+    })
+
+@login_required
+async def delete_dataset_video(request, dataset_id, dataset_video_id):
+    """Delete dataset video with file ownership checks"""
+    dataset, _project, template_vars = await aget_menu_data(request, dataset_id)
+    manage_dataset_perm = dataset_id in template_vars['manage_dataset_ids']
+    if not manage_dataset_perm:
+        return HttpResponse('Forbidden', status=403)
+
+    dataset_video = await DatasetVideo.objects.aget(pk=dataset_video_id, dataset=dataset)
+
+    if request.method == 'POST':
+        # Check if video is still being processed
+        if not dataset_video.is_cut:
+            messages.error(request, 'Cannot delete video while it is still being processed. Please wait for processing to complete.')
+            return redirect('dataset_video', dataset_id=dataset_id, dataset_video_id=dataset_video_id)
+
+        session = None
+        if request.credentials:
+            from .mturk import make_aws_session
+            session = make_aws_session(request.credentials)
+
+        success, error, failed_files = await dataset_video.safe_delete_with_files(session)
+
+        if success:
+            messages.success(request, f'Dataset video "{dataset_video.name}" deleted successfully')
+            return redirect('dataset_videos', dataset_id=dataset_id)
+        else:
+            messages.error(request, error)
+            return redirect('dataset_videos', dataset_id=dataset_id)
+
+    # GET request - show confirmation
+    has_nonowned = await sync_to_async(dataset_video.has_nonowned_files)(request.user)
+    return await arender(request, 'delete_dataset_video.html', {
+        'dataset_video': dataset_video,
+        'has_nonowned_files': has_nonowned,
+        **template_vars,
+    })
+
+@login_required
+async def delete_segment(request, dataset_id, segment_id):
+    """Delete segment with file ownership checks"""
+    dataset, _project, template_vars = await aget_menu_data(request, dataset_id)
+    manage_dataset_perm = dataset_id in template_vars['manage_dataset_ids']
+    if not manage_dataset_perm:
+        return HttpResponse('Forbidden', status=403)
+
+    segment = await Segment.objects.aget(pk=segment_id, dataset_video__dataset=dataset)
+
+    if request.method == 'POST':
+        session = None
+        if request.credentials:
+            from .mturk import make_aws_session
+            session = make_aws_session(request.credentials)
+
+        success, error, failed_files = await segment.safe_delete_with_files(session)
+
+        if success:
+            messages.success(request, f'Segment deleted successfully')
+            return redirect('dataset_video', dataset_id=dataset_id, dataset_video_id=segment.dataset_video_id)
+        else:
+            messages.error(request, error)
+            return redirect('dataset_video', dataset_id=dataset_id, dataset_video_id=segment.dataset_video_id)
+
+    # GET request - show confirmation
+    has_nonowned = await sync_to_async(segment.has_nonowned_files)(request.user)
+    return await arender(request, 'delete_segment.html', {
+        'segment': segment,
+        'has_nonowned_files': has_nonowned,
+        **template_vars,
+    })
+
+@login_required
+async def delete_project(request, dataset_id, project_id):
+    """Delete project (no file operations needed)"""
+    dataset, project, template_vars = await aget_menu_data(request, dataset_id, project_id)
+    manage_project_perm = project_id in template_vars['manage_project_ids']
+    if not manage_project_perm:
+        return HttpResponse('Forbidden', status=403)
+
+    if request.method == 'POST':
+        success, message = await project.safe_delete_project()
+        if success:
+            messages.success(request, f'Project "{project.name}" deleted successfully. {message}')
+            return redirect('dataset_projects', dataset_id=dataset_id)
+        else:
+            messages.error(request, message)
+            return redirect('dataset_project', dataset_id=dataset_id, project_id=project_id)
+
+    # GET request - show confirmation
+    return await arender(request, 'delete_project.html', {
+        'project': project,
+        **template_vars,
+    })
+
 @csrf_exempt
 @require_POST
-async def upload_video_api(request, token):
+async def upload_video_api(request, user_token, dataset_id):
     try:
+        # Get user by upload token
+        from .models import UserProfile
+        user_profile = await UserProfile.objects.select_related('user').aget(upload_token=user_token)
+        user = user_profile.user
+
+        # Get dataset and validate user has permission to upload
+        dataset = await Dataset.objects.aget(id=dataset_id)
+
+        # Check if user can manage dataset or any projects in the dataset
+        from guardian.shortcuts import get_objects_for_user
+        manage_dataset_perm = await sync_to_async(
+            lambda: dataset in get_objects_for_user(user, 'video_eval_app.manage_dataset')
+        )()
+        manage_project_perm = await sync_to_async(
+            lambda: dataset.projects.filter(
+                id__in=get_objects_for_user(user, 'video_eval_app.manage_project').values_list('id', flat=True)
+            ).exists()
+        )()
+
+        if not (manage_dataset_perm or manage_project_perm):
+            return JsonResponseWithNewline({"error": "Permission denied: user cannot upload to this dataset"}, status=403)
+
         credentials = await get_request_credentials(request)
-        dataset = await Dataset.objects.aget(token=token)
-        dataset_video = await upload_video(request, dataset, credentials)
+
+        # Handle location parameter like the web interface does
+        location = request.POST.get('Location') or request.POST.get('location')
+        if location and credentials:
+            credentials['Location'] = location
+
+        # Pass the authenticated user to upload_video for file attribution
+        dataset_video = await upload_video(request, dataset, credentials, user)
         return JsonResponseWithNewline({"dataset_video_id": dataset_video.id})
+    except UserProfile.DoesNotExist:
+        return JsonResponseWithNewline({"error": "Invalid user token"}, status=403)
     except Dataset.DoesNotExist:
-        return JsonResponseWithNewline({"error": "Invalid token"}, status=403)
+        return JsonResponseWithNewline({"error": "Invalid dataset ID"}, status=404)
     except (JSONParseError, CredentialValidationError) as x:
         return JsonResponseWithNewline({"error": str(x)}, status=400)
     except IntegrityError as e:
@@ -377,10 +547,16 @@ def dataset_videos(request, dataset_id):
     paginator = Paginator(dataset.dataset_videos.order_by('name').all(), ITEMS_PER_PAGE)
     page_number = request.GET.get("page")
     page = paginator.get_page(page_number)
+
+    # Pre-calculate ownership information for dataset videos on current page
+    for dataset_video in page.object_list:
+        dataset_video.has_nonowned_files_for_user = dataset_video.has_nonowned_files(request.user)
+
     new_url = request.user.is_authenticated and reverse('dataset_videos_new', args=[dataset.id])
     return render(request, 'dataset_videos.html', {
         'page': page,
         'new_url': new_url,
+        'editable': manage_dataset_perm,
         **template_vars,
     })
 
@@ -397,6 +573,15 @@ async def dataset_video(request, dataset_id, dataset_video_id=None):
             paginator = Paginator(dataset_video.segments.order_by('start'), ITEMS_PER_PAGE)
             page_number = request.GET.get("page")
             page = await sync_to_async(paginator.get_page)(page_number)
+
+            # Pre-calculate ownership information for dataset video and segments
+            def calculate_ownership_info():
+                dataset_video.has_nonowned_files_for_user = dataset_video.has_nonowned_files(request.user)
+                if page:
+                    for segment in page.object_list:
+                        segment.has_nonowned_files_for_user = segment.has_nonowned_files(request.user)
+
+            await sync_to_async(calculate_ownership_info)()
         else:
             dataset_video = DatasetVideo(dataset=dataset)
             page = None
@@ -896,8 +1081,13 @@ def segment(request, segment_id):
     managed_projects = dataset.projects.filter(id__in=template_vars['manage_project_ids'])
     if not (manage_dataset_perm or managed_projects): # TODO: or a project
         return HttpResponse('Forbidden', status=403)
+
+    # Pre-calculate ownership information
+    segment.has_nonowned_files_for_user = segment.has_nonowned_files(request.user)
+
     return render(request, 'segment.html', {
         'segment': segment,
+        'editable': manage_dataset_perm,
         **template_vars,
     })
 

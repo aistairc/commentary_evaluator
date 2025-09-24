@@ -3,11 +3,27 @@
 {% block content %}
   <h2>Segment</h2>
 
-  <div>
-    <a href="{% url 'dataset_video' dataset.id segment.dataset_video.id %}">
-      {{ segment.dataset_video.name }}
-    </a>
-    ({{ segment.start_ts }} &ndash; {{ segment.end_ts }})
+  <div class="d-flex justify-content-between align-items-center">
+    <div>
+      <a href="{% url 'dataset_video' dataset.id segment.dataset_video.id %}">
+        {{ segment.dataset_video.name }}
+      </a>
+      ({{ segment.start_ts }} &ndash; {{ segment.end_ts|default_if_none:"End" }})
+    </div>
+
+    {% if editable %}
+      <div>
+        {% if segment.has_nonowned_files_for_user %}
+        <a href="{% url 'delete_segment' dataset.id segment.id %}" class="btn btn-warning">
+          <i class="fa fa-users"></i> Delete Segment
+        </a>
+        {% else %}
+        <a href="{% url 'delete_segment' dataset.id segment.id %}" class="btn btn-danger">
+          <i class="fa fa-trash"></i> Delete Segment
+        </a>
+        {% endif %}
+      </div>
+    {% endif %}
   </div>
 
   <video crossorigin="anonymous" controls autoplay class="mt-3">
@@ -16,5 +32,36 @@
       <track src="{{ segment.subtitles.url }}" kind="captions" default>
     {% endif %}
   </video>
+
+  <div class="mt-4">
+    <h4>File Details</h4>
+    <div class="mt-3">
+      <h6>Video File</h6>
+      <ul class="list-unstyled">
+        <li><strong>Name:</strong> {{ segment.video.name }}</li>
+        <li><strong>Owner:</strong> {{ segment.video.created_by.username|default:"<em>None</em>" }}</li>
+        <li><strong>MD5:</strong> <code>{{ segment.video.md5sum }}</code></li>
+        {% if segment.video.bucket %}
+        <li><strong>S3 URI:</strong> <code>s3://{{ segment.video.bucket }}/{{ segment.video.key }}</code></li>
+        {% else %}
+        <li><strong>Local Path:</strong> <code>{{ segment.video.path }}</code></li>
+        {% endif %}
+      </ul>
+
+      {% if segment.subtitles %}
+      <h6 class="mt-3">Subtitle File</h6>
+      <ul class="list-unstyled">
+        <li><strong>Name:</strong> {{ segment.subtitles.name }}</li>
+        <li><strong>Owner:</strong> {{ segment.subtitles.created_by.username|default:"<em>None</em>" }}</li>
+        <li><strong>MD5:</strong> <code>{{ segment.subtitles.md5sum }}</code></li>
+        {% if segment.subtitles.bucket %}
+        <li><strong>S3 URI:</strong> <code>s3://{{ segment.subtitles.bucket }}/{{ segment.subtitles.key }}</code></li>
+        {% else %}
+        <li><strong>Local Path:</strong> <code>{{ segment.subtitles.path }}</code></li>
+        {% endif %}
+      </ul>
+      {% endif %}
+    </div>
+  </div>
 {% endblock %}
 {# vim: set ft=htmldjango: #}

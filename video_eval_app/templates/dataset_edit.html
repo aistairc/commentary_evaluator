@@ -12,10 +12,10 @@
       <input class="form-control" id="dataset-created-by" value="{{dataset.created_by.username}}" readonly>
     </div>
     <div class="mb-3">
-      <label for="dataset-token" class="form-label">Token</label>
+      <label for="upload-token" class="form-label">Your Upload Token</label>
       <div class="row">
         <div class="col-sm-10">
-          <input class="form-control" id="dataset-token" name="token" aria-describedby="tokenHelp" value="{{dataset.token}}" data-old-value="{{dataset.token}}" readonly>
+          <input class="form-control" id="upload-token" name="token" aria-describedby="tokenHelp" value="{{request.user.profile.upload_token}}" data-old-value="{{request.user.profile.upload_token}}" readonly>
         </div>
         <div class="col-sm-2">
           <input type="button" class="btn btn-primary form-control" id="token-renew-button" value="Renew">
@@ -23,7 +23,7 @@
           <script>
             const tokenRenewButton = document.querySelector('#token-renew-button')
             const tokenRenewValue = document.querySelector('#token-renew-value')
-            const tokenEl = document.querySelector('#dataset-token')
+            const tokenEl = document.querySelector('#upload-token')
             tokenRenewButton.addEventListener('click', evt => {
               const renew = 1 - tokenRenewValue.value
               tokenRenewValue.value = renew
@@ -41,7 +41,7 @@
         </div>
       </div>
     </div>
-    <div id="tokenHelp" class="form-text">You can use the token to upload videos from command line:
+    <div id="tokenHelp" class="form-text">You can use your upload token to upload videos from command line:
       <pre class="text-wrap text-secondary border border-primary rounded p-1 mb-0"><code>
         curl -F "file=@<i class="text-primary">video.mp4</i>" -F "audio=@<code class="text-primary">audio.mp3</code>" -F "subtitles=@<i class="text-primary">subtitles.srt</i>" -F "cuts=@<i class="text-primary">cuts.json</i>" -F "name=<i class="text-primary">video name</i>" -F "credentials=@<i class="text-primary">credentials.json</i>" -F "location=<i class="text-primary">bucket/path</i>" {{upload_video_url}}
       </code></pre>
@@ -52,7 +52,27 @@
         in order to upload the files to S3 storage, as opposed to locally to this server.
       </div>
     </div>
-    <button type="submit" class="btn btn-primary">Submit</code>
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-primary">Submit</button>
+
+      {% if editable %}
+        {% if dataset.is_cut %}
+          {% if dataset.has_nonowned_files_for_user %}
+          <a href="{% url 'delete_dataset' dataset.id %}" class="btn btn-warning">
+            <i class="fa fa-users"></i> Delete Dataset
+          </a>
+          {% else %}
+          <a href="{% url 'delete_dataset' dataset.id %}" class="btn btn-danger">
+            <i class="fa fa-trash"></i> Delete Dataset
+          </a>
+          {% endif %}
+        {% else %}
+          <span class="btn btn-secondary" disabled>
+            <i class="fa fa-spinner fa-spin"></i> Processing Videos...
+          </span>
+        {% endif %}
+      {% endif %}
+    </div>
   </form>
 {% endblock %}
 {# vim: set ft=htmldjango: #}

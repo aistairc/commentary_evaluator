@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+  <div class="col">
+    <div class="alert alert-danger">
+      <h4><i class="fa fa-exclamation-triangle"></i> Confirm Dataset Deletion</h4>
+      <p>Are you sure you want to delete the dataset <strong>{{ dataset.name }}</strong>?</p>
+
+      <p><strong>This will permanently delete:</strong></p>
+      <ul>
+        <li>All dataset videos and segments</li>
+        <li>All projects, tasks, and assignments</li>
+        <li>All associated file data</li>
+      </ul>
+
+      {% if has_nonowned_files %}
+      <div class="alert alert-warning">
+        <i class="fa fa-users"></i>
+        <strong>Warning:</strong> This dataset includes files uploaded by other users.
+        Deletion will be attempted but may fail if you don't have permission to delete their S3 files.
+      </div>
+      {% endif %}
+
+      <p><strong>This action cannot be undone.</strong></p>
+    </div>
+
+    <form method="post">
+      {% csrf_token %}
+      <div class="d-flex gap-2">
+        {% if has_nonowned_files %}
+        <button type="submit" class="btn btn-warning">
+          <i class="fa fa-users"></i> Delete Dataset (includes others' files)
+        </button>
+        {% else %}
+        <button type="submit" class="btn btn-danger">
+          <i class="fa fa-trash"></i> Delete Dataset
+        </button>
+        {% endif %}
+
+        <a href="{% url 'dataset_edit' dataset.id %}" class="btn btn-secondary">
+          <i class="fa fa-times"></i> Cancel
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

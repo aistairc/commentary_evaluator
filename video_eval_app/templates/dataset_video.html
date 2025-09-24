@@ -29,7 +29,27 @@
         <input type="file" class="form-control" id="video-cuts" name="cuts" accept=".json">
       </div>
     {% endif %}
-    <button type="submit" class="btn btn-primary">Submit</button>
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-primary">Submit</button>
+
+      {% if editable and dataset_video.id %}
+        {% if dataset_video.is_cut %}
+          {% if dataset_video.has_nonowned_files_for_user %}
+          <a href="{% url 'delete_dataset_video' dataset.id dataset_video.id %}" class="btn btn-warning">
+            <i class="fa fa-users"></i> Delete Dataset Video
+          </a>
+          {% else %}
+          <a href="{% url 'delete_dataset_video' dataset.id dataset_video.id %}" class="btn btn-danger">
+            <i class="fa fa-trash"></i> Delete Dataset Video
+          </a>
+          {% endif %}
+        {% else %}
+          <span class="btn btn-secondary" disabled>
+            <i class="fa fa-spinner fa-spin"></i> Processing...
+          </span>
+        {% endif %}
+      {% endif %}
+    </div>
   </form>
 
   {% if dataset_video.id %}
@@ -55,6 +75,14 @@
 
     <div class="responsive-table w-100 mt-3">
       <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Time Range</th>
+            {% if editable %}
+              <th scope="col">Actions</th>
+            {% endif %}
+          </tr>
+        </thead>
         <tbody>
           {% for segment in page %}
             <tr>
@@ -65,6 +93,19 @@
                   {{ segment.end_ts|default_if_none:"End" }}
                 </a>
               </td>
+              {% if editable %}
+                <td>
+                  {% if segment.has_nonowned_files_for_user %}
+                  <a href="{% url 'delete_segment' dataset.id segment.id %}" class="btn btn-warning btn-sm">
+                    <i class="fa fa-users"></i> Delete
+                  </a>
+                  {% else %}
+                  <a href="{% url 'delete_segment' dataset.id segment.id %}" class="btn btn-danger btn-sm">
+                    <i class="fa fa-trash"></i> Delete
+                  </a>
+                  {% endif %}
+                </td>
+              {% endif %}
             </tr>
           {% endfor %}
         </tbody>
@@ -72,6 +113,51 @@
     </div>
 
     {% include '_paginator.html' %}
+
+    <div class="mt-4">
+      <h4>File Details</h4>
+      <div class="mt-3">
+        <h6>Video File</h6>
+        <ul class="list-unstyled">
+          <li><strong>Name:</strong> {{ dataset_video.video.name }}</li>
+          <li><strong>Owner:</strong> {{ dataset_video.video.created_by.username|default:"<em>None</em>" }}</li>
+          <li><strong>MD5:</strong> <code>{{ dataset_video.video.md5sum }}</code></li>
+          {% if dataset_video.video.bucket %}
+          <li><strong>S3 URI:</strong> <code>s3://{{ dataset_video.video.bucket }}/{{ dataset_video.video.key }}</code></li>
+          {% else %}
+          <li><strong>Local Path:</strong> <code>{{ dataset_video.video.path }}</code></li>
+          {% endif %}
+        </ul>
+
+        {% if dataset_video.subtitles %}
+        <h6 class="mt-3">Subtitle File</h6>
+        <ul class="list-unstyled">
+          <li><strong>Name:</strong> {{ dataset_video.subtitles.name }}</li>
+          <li><strong>Owner:</strong> {{ dataset_video.subtitles.created_by.username|default:"<em>None</em>" }}</li>
+          <li><strong>MD5:</strong> <code>{{ dataset_video.subtitles.md5sum }}</code></li>
+          {% if dataset_video.subtitles.bucket %}
+          <li><strong>S3 URI:</strong> <code>s3://{{ dataset_video.subtitles.bucket }}/{{ dataset_video.subtitles.key }}</code></li>
+          {% else %}
+          <li><strong>Local Path:</strong> <code>{{ dataset_video.subtitles.path }}</code></li>
+          {% endif %}
+        </ul>
+        {% endif %}
+
+        {% if dataset_video.audio %}
+        <h6 class="mt-3">Audio File</h6>
+        <ul class="list-unstyled">
+          <li><strong>Name:</strong> {{ dataset_video.audio.name }}</li>
+          <li><strong>Owner:</strong> {{ dataset_video.audio.created_by.username|default:"<em>None</em>" }}</li>
+          <li><strong>MD5:</strong> <code>{{ dataset_video.audio.md5sum }}</code></li>
+          {% if dataset_video.audio.bucket %}
+          <li><strong>S3 URI:</strong> <code>s3://{{ dataset_video.audio.bucket }}/{{ dataset_video.audio.key }}</code></li>
+          {% else %}
+          <li><strong>Local Path:</strong> <code>{{ dataset_video.audio.path }}</code></li>
+          {% endif %}
+        </ul>
+        {% endif %}
+      </div>
+    </div>
 
   {% endif %}
 

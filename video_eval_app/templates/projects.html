@@ -12,6 +12,7 @@
         <th scope="col">ID</th>
         <th scope="col">Name</th>
         <th scope="col">Dataset</th>
+        <th scope="col">Actions</th>
       </tr>
     </thead>
     <tbody>
@@ -34,6 +35,13 @@
               <a href="{% url 'dataset_videos' row.project.dataset.id %}">{{ row.project.dataset.name }}</a>
             {% else %}
               {{ row.project.dataset.name }}
+            {% endif %}
+          </td>
+          <td>
+            {% if row.manage_project_perm %}
+            <a href="{% url 'delete_project' row.project.dataset.id row.project.id %}" class="btn btn-danger btn-sm">
+              <i class="fa fa-trash"></i> Delete
+            </a>
             {% endif %}
           </td>
         </tr>

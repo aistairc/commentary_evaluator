@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+  <div class="col">
+    <div class="alert alert-danger">
+      <h4><i class="fa fa-exclamation-triangle"></i> Confirm Project Deletion</h4>
+      <p>Are you sure you want to delete the project <strong>{{ project.name }}</strong>?</p>
+
+      <p><strong>This will permanently delete:</strong></p>
+      <ul>
+        <li>All tasks in this project</li>
+        <li>All worker assignments</li>
+        <li>All pending invitations for this project</li>
+      </ul>
+
+      <p><strong>Note:</strong> The underlying video segments and files will NOT be deleted and will remain available for other projects.</p>
+
+      <p><strong>This action cannot be undone.</strong></p>
+    </div>
+
+    <form method="post">
+      {% csrf_token %}
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-danger">
+          <i class="fa fa-trash"></i> Delete Project
+        </button>
+
+        <a href="{% url 'dataset_project' dataset.id project.id %}" class="btn btn-secondary">
+          <i class="fa fa-times"></i> Cancel
+        </a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

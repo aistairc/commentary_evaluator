@@ -18,6 +18,7 @@ from django.core.files.storage import default_storage
 from webvtt import WebVTT
 
 from .models import Segment, DatasetVideo, Assignment, Worker, StoredFile
+from django.contrib.auth.models import User
 from .utils import secs_to_timestamp, timestamp_to_secs, load_subtitles
 from .mturk import MTurk, make_aws_session
 
@@ -109,6 +110,9 @@ async def cut_dataset_video(dataset_video, session, location):
     async with subtitles_path_ctx as subtitles_path:
         subtitles = load_subtitles(subtitles_path)
     cuts = dataset_video.cuts or [[0]]
+
+    # Get the owner from the source video file to inherit ownership
+    source_owner = await User.objects.aget(id=dataset_video.video.created_by_id) if dataset_video.video.created_by_id else None
     for cut in cuts:
         start = cut[0]
         end = cut[1] if len(cut) > 1 else None
@@ -132,9 +136,9 @@ async def cut_dataset_video(dataset_video, session, location):
             async with video_path_ctx as video_path, audio_path_ctx as audio_path:
                 mp4_file = await cut_video(video_path, audio_path, start, end, temp_mp4)
             seg_subtitles = cut_subtitles(subtitles, start, end, temp_vtt)
-            video_file = await StoredFile.store(mp4_file, "video_files", session, location)
+            video_file = await StoredFile.store(mp4_file, "video_files", session, location, created_by=source_owner)
             mp4_file.close()
-            subs_file = await StoredFile.store(seg_subtitles, "subs_files", session, location)
+            subs_file = await StoredFile.store(seg_subtitles, "subs_files", session, location, created_by=source_owner)
             if seg_subtitles:
                 seg_subtitles.close()
             await video_file.delocalize(session, location)
