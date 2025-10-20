@@ -800,7 +800,7 @@ def creators(request):
         paginator = Paginator(users, ITEMS_PER_PAGE)
         page_number = request.GET.get("page")
         page = paginator.get_page(page_number)
-        new_url = request.user.has_perm('add_user') and reverse('creator_invite', args=[])
+        new_url = reverse('creator_invite', args=[])
         return render(request, 'creators.html', {
             'page': page,
             'new_url': new_url,
@@ -841,7 +841,7 @@ def dataset_managers(request, dataset_id):
                 for user in page.object_list
             )
         ]
-        new_url = request.user.has_perm('add_user') and reverse('dataset_invite', args=[dataset.id])
+        new_url = manage_dataset_perm and reverse('dataset_invite', args=[dataset.id])
         return render(request, 'dataset_managers.html', {
             'page': page,
             'new_url': new_url,
@@ -972,6 +972,7 @@ async def assignment(request, assignment_id):
 def project_users(request, project_id):
     dataset, project, template_vars = get_menu_data(request, None, project_id)
     manage_project_perm = project_id in template_vars['manage_project_ids']
+    manage_dataset_perm = dataset and dataset.id in template_vars['manage_dataset_ids']
     if not manage_project_perm:
         return HttpResponse('Forbidden', status=403)
     if request.method in {"GET", "HEAD"}:
@@ -987,7 +988,7 @@ def project_users(request, project_id):
                 for user in page.object_list
             )
         ]
-        new_url = request.user.has_perm('add_user') and reverse('project_invite', args=[project.id])
+        new_url = manage_dataset_perm and reverse('project_invite', args=[project.id])
         return render(request, 'project_users.html', {
             'page': page,
             'new_url': new_url,
