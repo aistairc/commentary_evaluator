@@ -46,7 +46,13 @@
           {% if question.type == 'radio' or question.type == 'checkbox' %}
             {% for option in question.options %}
               <div class="form-check">
-                <input class="form-check-input" type="{{ question.type }}" name="q-{{ question.id | escape }}" value="{{ option.value | escape }}" id="q-{{ question.id | escape }}-{{ option.value | escape }}" {% if option.value == answer %}checked{% endif %} {{disabled}}>
+                <input class="form-check-input" type="{{ question.type }}" name="q-{{ question.id | escape }}" value="{{ option.value | escape }}" id="q-{{ question.id | escape }}-{{ option.value | escape }}" 
+                  {% if question.type == 'checkbox' and option.value in answer %}
+                      checked
+                  {% elif question.type == 'radio' and option.value == answer %}
+                      checked
+                  {% endif %}
+                  {{disabled}}>
                 <label class="form-check-label" for="q-{{ question.id | escape }}-{{ option.value | escape }}">
                   {{ option.text | safe }}
                 </label>
